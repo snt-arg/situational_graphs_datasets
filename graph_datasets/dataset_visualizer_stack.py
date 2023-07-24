@@ -1,12 +1,14 @@
 from SyntheticDatasetGenerator import SyntheticDatasetGenerator
 from graph_visualizer import visualize_nxgraph
-from GNNWrapper import GNNWrapper
 import matplotlib.pyplot as plt
-import json, os, time
+import json, os, time, sys
 
-with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"config","SyntheticDataset", "graph_reasoning.json")) as f:
+graph_wrapper_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning","graph_reasoning")
+sys.path.append(graph_wrapper_dir)
+from GNNWrapper import GNNWrapper
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"config", "graph_reasoning.json")) as f:
     synteticdataset_settings = json.load(f)
-with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"config","GraphReasoning", "same_room_training.json")) as f:
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning" , "config", "same_room_training.json")) as f:
     graph_reasoning_settings = json.load(f)
 
 dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings)

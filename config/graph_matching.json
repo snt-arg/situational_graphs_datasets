@@ -1,8 +1,8 @@
 {   
     "base_graphs": {
-        "grid_dims" : [5,5],
+        "grid_dims" : [[5,5],[5,5]],
         "playground_size": [120, 120],
-        "max_room_entry_size" : 4,
+        "max_room_entry_size" : [4,4],
         "room_center_distances" : [5,5],
         "wall_thickness" : 0.5,
         "n_buildings" : 1

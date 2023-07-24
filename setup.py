@@ -1,6 +1,6 @@
 from setuptools import setup
 
-package_name = 'graph_synthetic_dataset'
+package_name = 'graph_datasets'
 
 setup(
     name=package_name,
