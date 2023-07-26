@@ -6,7 +6,7 @@ import json, os, time, sys
 graph_wrapper_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning","graph_reasoning")
 sys.path.append(graph_wrapper_dir)
 from GNNWrapper import GNNWrapper
-with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"config", "graph_reasoning.json")) as f:
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),"config", "dataset_testing.json")) as f:
     synteticdataset_settings = json.load(f)
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning" , "config", "same_room_training.json")) as f:
     graph_reasoning_settings = json.load(f)

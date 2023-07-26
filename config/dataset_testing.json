@@ -1,8 +1,8 @@
 {   
     "base_graphs": {
-        "grid_dims" : [[4,7],[4,7]],
+        "grid_dims" : [[5,5],[5,5]],
         "playground_size": [100, 100],
-        "max_room_entry_size" : [2,3],
+        "max_room_entry_size" : [3,3],
         "room_center_distances" : [5,5],
         "wall_thickness" : 0.5,
         "n_buildings" : 11
@@ -20,7 +20,7 @@
         },
         "ws": {
             "active": true,
-            "rotation": 0.015
+            "rotation": 0.01
         }
     },
     "multiview": {

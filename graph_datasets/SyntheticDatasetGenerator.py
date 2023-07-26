@@ -31,7 +31,6 @@ class SyntheticDatasetGenerator():
         self.norm_limits["ws"] = {"min": np.array([-room_center_distances[0]/2,-room_center_distances[0]/2,-room_center_distances[0]/2, -room_center_distances[1]/2,-room_center_distances[1]/2,-room_center_distances[1]/2, -1, -1]),\
                         "max": np.array([room_center_distances[0]*grid_dims[0],room_center_distances[0]*grid_dims[0],room_center_distances[0]*grid_dims[0],room_center_distances[1]*grid_dims[1],room_center_distances[1]*grid_dims[1],room_center_distances[1]*grid_dims[1], 1,1])}
 
-
     def create_dataset(self):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Generating Syntetic Dataset" + Fore.WHITE)
         n_buildings = self.settings["base_graphs"]["n_buildings"]
@@ -43,7 +42,6 @@ class SyntheticDatasetGenerator():
             self.graphs["original"].append(self.generate_graph_from_base_matrix(base_matrix, add_noise= False))
             self.graphs["noise"].append(self.generate_graph_from_base_matrix(base_matrix, add_noise= True))
             self.graphs["views"].append(self.generate_graph_from_base_matrix(base_matrix, add_noise= False, add_multiview=True))
-
 
     def generate_base_matrix(self):
         grid_dims = [np.random.randint(self.settings["base_graphs"]["grid_dims"][0][0], self.settings["base_graphs"]["grid_dims"][0][1] + 1),
@@ -87,7 +85,6 @@ class SyntheticDatasetGenerator():
             if self.settings["noise"]["global"]["active"]:
                 noise_global_center = np.concatenate([np.array(self.settings["base_graphs"]["playground_size"]) * self.settings["noise"]["global"]["translation"] * (np.random.rand(2)- 0.5), [0]])
                 noise_global_rotation_angle = (np.random.rand(1)*360*self.settings["noise"]["global"]["rotation"])[0]
-                noise_global_rotation_angle=90
             else:
                 noise_global_center = [0,0,0]
                 noise_global_rotation_angle = 0
@@ -107,12 +104,12 @@ class SyntheticDatasetGenerator():
 
                 if self.settings["noise"]["room"]["active"]:
                     center_noise = np.concatenate([np.random.rand(2)*room_center_distances*self.settings["noise"]["room"]["translation"], [0]])
-                    room_orientation_angle += np.random.rand(1)[0]*360*self.settings["noise"]["room"]["rotation"]
+                    room_orientation_angle += (np.random.rand(1)-0.5)[0]*360*self.settings["noise"]["room"]["rotation"]
                 else:
                     center_noise = [0,0,0]
                 
                 room_center = R.from_euler("Z", noise_global_rotation_angle, degrees= True).apply(np.array(noise_global_center) + np.array(room_center) + center_noise)
-                room_area = abs(R.from_euler("Z", room_orientation_angle, degrees= True).apply(room_area))
+                # room_area = abs(R.from_euler("Z", room_orientation_angle, degrees= True).apply(room_area))
             geometric_info = room_center
             
             graph.add_nodes([(node_ID,{"type" : "room","center" : room_center, "x": [], "orientation_angle": room_orientation_angle, "area" : room_area, "Geometric_info" : geometric_info,\
@@ -138,7 +135,7 @@ class SyntheticDatasetGenerator():
             normals = copy.deepcopy(canonic_normals)
             if add_noise:
                 if self.settings["noise"]["ws"]["active"]:
-                    per_ws_noise_rot_angle = np.random.rand(4) * 360 * self.settings["noise"]["ws"]["rotation"]
+                    per_ws_noise_rot_angle = (np.random.rand(4)-np.ones(4)*0.5) * 360 * self.settings["noise"]["ws"]["rotation"]
                 else:
                     per_ws_noise_rot_angle = [0,0,0,0]
 
@@ -147,14 +144,13 @@ class SyntheticDatasetGenerator():
             for i in range(4):
                 node_ID = len(graph.get_nodes_ids())
                 orthogonal_normal = R.from_euler("Z", 90, degrees= True).apply(copy.deepcopy(normals[i]))
+                orthogonal_canonic_normal = R.from_euler("Z", 90, degrees= True).apply(copy.deepcopy(canonic_normals[i]))
                 ws_normal = np.array([-1,-1, 0])*normals[i]
-                ws_center = node_data[1]["center"] + vector_signed_projection(np.array(node_data[1]["area"])/2,np.array(normals[i]))
-                # ws_center = node_data[1]["center"] + np.array(node_data[1]["area"])/2*np.array(normals[i])
-                # ws_center = node_data[1]["center"] + np.array(normals[i])*np.array(node_data[1]["area"])/2
-                
-                ws_length = max(abs(np.array(orthogonal_normal)*np.array(node_data[1]["area"])))
-                ws_limit_1 = ws_center + vector_signed_projection(np.array(node_data[1]["area"])/2,np.array(orthogonal_normal))
-                ws_limit_2 = ws_center + vector_signed_projection(np.array(node_data[1]["area"])/2,np.array(-orthogonal_normal))
+                ws_center = node_data[1]["center"] + abs(np.dot(np.array(node_data[1]['area'])/2,canonic_normals[i]))*np.array(normals[i])
+
+                ws_length = abs(np.dot(np.array(node_data[1]['area']),canonic_normals[i]))
+                ws_limit_1 = ws_center + abs(np.dot(np.array(node_data[1]['area'])/2,np.array(orthogonal_canonic_normal)))*np.array(orthogonal_normal)
+                ws_limit_2 = ws_center + abs(np.dot(np.array(node_data[1]['area'])/2,-np.array(orthogonal_canonic_normal)))*(-np.array(orthogonal_normal))
                 x = np.concatenate([ws_center[:2], [ws_length], ws_normal[:2]]).astype(np.float32)
                 # x_norm = (x-self.norm_limits["ws"]["min"])/(self.norm_limits["ws"]["max"]-self.norm_limits["ws"]["min"])
                 x_norm = x
@@ -222,12 +218,11 @@ class SyntheticDatasetGenerator():
         graph.to_undirected()
         return graph
     
-
-    
     def get_filtered_datset(self, node_types, edge_types):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Filtering Dataset" + Fore.WHITE)
         nx_graphs = {}
         for key in self.graphs.keys():
+            print(f"flag keys {key}")
             nx_graphs_key = []
             for base_graph in self.graphs[key]:
                 filtered_graph = base_graph.filter_graph_by_node_types(node_types)
@@ -321,11 +316,6 @@ class SyntheticDatasetGenerator():
         unparented_base_graph = copy.deepcopy(unparented_base_graph)
         unparented_base_graph.add_edges(predictions)
         visualize_nxgraph(unparented_base_graph, image_name = image_name)
-
-def vector_signed_projection(u,v):
-    v_norm = np.sqrt(sum(v**2))
-    proj_oj_u_on_v = abs(np.dot(u,v)/v_norm**2)*v
-    return proj_oj_u_on_v
 
 def minimum_distance_two_wallsurfaces(ws_1_def, ws_2_def):
     def minimum_distance_two_point_sets(set_1, set_2):
