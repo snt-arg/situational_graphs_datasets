@@ -167,7 +167,7 @@ class SyntheticDatasetGenerator():
 
                 ### Fully connected version
                 for prior_ws_i in range(i):
-                    x = minimum_distance_two_wallsurfaces(graph.get_attributes_of_node(node_ID),graph.get_attributes_of_node(node_ID-(prior_ws_i+1)))
+                    x = segments_distance(graph.get_attributes_of_node(node_ID),graph.get_attributes_of_node(node_ID-(prior_ws_i+1)))
                     graph.add_edges([(node_ID, node_ID-(prior_ws_i+1), {"type": "ws_same_room", "x":x, "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
                 # ### Only consecutive wall surfaces
                 # if i > 0:
@@ -222,7 +222,6 @@ class SyntheticDatasetGenerator():
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Filtering Dataset" + Fore.WHITE)
         nx_graphs = {}
         for key in self.graphs.keys():
-            print(f"flag keys {key}")
             nx_graphs_key = []
             for base_graph in self.graphs[key]:
                 filtered_graph = base_graph.filter_graph_by_node_types(node_types)
@@ -234,7 +233,7 @@ class SyntheticDatasetGenerator():
         return nx_graphs
     
 
-    def extend_nxdataset(self, nxdataset):
+    def extend_nxdataset(self, nxdataset, new_edge_types):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
         # hdataset = []
         new_nxdataset = []
@@ -270,12 +269,12 @@ class SyntheticDatasetGenerator():
                     target_nodes_ids = all_target_nodes_ids[i]
                     for target_node_id in target_nodes_ids:
                         tuple_direct, tuple_inverse = (base_node_id, target_node_id), (target_node_id, base_node_id)
-                        x = minimum_distance_two_wallsurfaces(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
+                        x = segments_distance(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
                         if tuple_direct in positive_gt_edge_ids or tuple_inverse in positive_gt_edge_ids:
                             if not settings["use_gt"]:
-                                new_edges.append((base_node_id, target_node_id,{"type": "ws_same_room", "label": 1, "x":x, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
+                                new_edges.append((base_node_id, target_node_id,{"type": new_edge_types, "label": 1, "x":x, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
                         else:
-                            new_edges.append((base_node_id, target_node_id,{"type": "ws_same_room", "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                            new_edges.append((base_node_id, target_node_id,{"type": new_edge_types, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
 
                 base_graph.unfreeze()
                 base_graph.add_edges(new_edges)
@@ -294,7 +293,7 @@ class SyntheticDatasetGenerator():
                         tuple_direct = (base_node_id, target_node_id)
                         tuple_inverse = (tuple_direct[1], tuple_direct[0])
                         if tuple_direct not in list(base_graph.get_edges_ids()) and tuple_inverse not in list(base_graph.get_edges_ids()):
-                            new_edges.append((tuple_direct[0], tuple_direct[1],{"type": "ws_same_room", "label": 0, "viz_feat" : 'blue', "linewidth":1.0, "alpha":0.5}))
+                            new_edges.append((tuple_direct[0], tuple_direct[1],{"type": new_edge_types, "label": 0, "viz_feat" : 'blue', "linewidth":1.0, "alpha":0.5}))
 
                     base_graph.unfreeze()
                     base_graph.add_edges(new_edges)
@@ -317,18 +316,84 @@ class SyntheticDatasetGenerator():
         unparented_base_graph.add_edges(predictions)
         visualize_nxgraph(unparented_base_graph, image_name = image_name)
 
-def minimum_distance_two_wallsurfaces(ws_1_def, ws_2_def):
-    def minimum_distance_two_point_sets(set_1, set_2):
-        min_distance = 99999
-        for point_1 in set_1:
-            for point_2 in set_2:
-                dist = math.dist(point_1, point_2)
-                if dist < min_distance:
-                    min_distance = dist
-        return np.array([min_distance])
+# def minimum_distance_two_wallsurfaces(ws_1_def, ws_2_def):
+#     def minimum_distance_two_point_sets(set_1, set_2):
+#         min_distance = 99999
+#         for point_1 in set_1:
+#             for point_2 in set_2:
+#                 dist = math.dist(point_1, point_2)
+#                 if dist < min_distance:
+#                     min_distance = dist
+#         print(f"flag type{type(min_distance)}")
+#         return np.array([min_distance])
 
-    set_1 = np.concatenate([[np.array(ws_1_def["center"])], ws_1_def["limits"]])
-    set_2 = np.concatenate([[np.array(ws_2_def["center"])], ws_2_def["limits"]])
-    return minimum_distance_two_point_sets(set_1, set_2)
+#     set_1 = np.concatenate([[np.array(ws_1_def["center"])], ws_1_def["limits"]])
+#     set_2 = np.concatenate([[np.array(ws_2_def["center"])], ws_2_def["limits"]])
+#     return minimum_distance_two_point_sets(set_1, set_2)
+
+
+def segments_distance(ws_1_def, ws_2_def):
+    """ distance between two segments in the plane:
+      one segment is (x11, y11) to (x12, y12)
+      the other is   (x21, y21) to (x22, y22)
+    """
+    def segments_intersect(x11, y11, x12, y12, x21, y21, x22, y22):
+        """ whether two segments in the plane intersect:
+            one segment is (x11, y11) to (x12, y12)
+            the other is   (x21, y21) to (x22, y22)
+        """
+        dx1 = x12 - x11
+        dy1 = y12 - y11
+        dx2 = x22 - x21
+        dy2 = y22 - y21
+        delta = dx2 * dy1 - dy2 * dx1
+        if delta == 0: return False  # parallel segments
+        s = (dx1 * (y21 - y11) + dy1 * (x11 - x21)) / delta
+        t = (dx2 * (y11 - y21) + dy2 * (x21 - x11)) / (-delta)
+        return (0 <= s <= 1) and (0 <= t <= 1)
+
+    def point_segment_distance(px, py, x1, y1, x2, y2):
+        dx = x2 - x1
+        dy = y2 - y1
+        if dx == dy == 0:  # the segment's just a point
+            return math.hypot(px - x1, py - y1)
+
+        # Calculate the t that minimizes the distance.
+        t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+
+        # See if this represents one of the segment's
+        # end points or a point in the middle.
+        if t < 0:
+            dx = px - x1
+            dy = py - y1
+        elif t > 1:
+            dx = px - x2
+            dy = py - y2
+        else:
+            near_x = x1 + t * dx
+            near_y = y1 + t * dy
+            dx = px - near_x
+            dy = py - near_y
+
+        return math.hypot(dx, dy)
+
+    p11, p12, p21, p22 = ws_1_def["limits"][0], ws_1_def["limits"][1], ws_2_def["limits"][0], ws_2_def["limits"][1]
+    x11, y11 = p11[0],p11[1]
+    x12, y12 = p12[0],p12[1]
+    x21, y21 = p21[0],p21[1]
+    x22, y22 = p22[0],p22[1]
+
+    if segments_intersect(x11, y11, x12, y12, x21, y21, x22, y22): return np.array([0])
+    # try each of the 4 vertices w/the other segment
+    distances = []
+    distances.append(point_segment_distance(x11, y11, x21, y21, x22, y22))
+    distances.append(point_segment_distance(x12, y12, x21, y21, x22, y22))
+    distances.append(point_segment_distance(x21, y21, x11, y11, x12, y12))
+    distances.append(point_segment_distance(x22, y22, x11, y11, x12, y12))
+    return np.array([min(distances)])
+
                 
+
+
+
 
