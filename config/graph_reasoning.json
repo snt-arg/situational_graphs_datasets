@@ -45,7 +45,7 @@
         }
     },
     "initial_features": {
-        "ws_node" : ["normals"],
-        "edge" : ["relative_pos", "min_dist"]
+        "ws_node" : ["centroid", "normals"],
+        "edge" : ["min_dist"]
     }
 }
