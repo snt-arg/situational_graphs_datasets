@@ -4,32 +4,67 @@ import itertools
 import random, math
 import tqdm
 from scipy.spatial.transform import Rotation as R
-from graph_visualizer import visualize_nxgraph
 from sklearn.neighbors import KDTree
 from colorama import Fore, Back, Style
 
 import sys
 import os
-graph_wrapper_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_wrapper","graph_wrapper")
+graph_wrapper_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_wrapper")
 sys.path.append(graph_wrapper_dir)
-from GraphWrapper import GraphWrapper
+from graph_wrapper.GraphWrapper import GraphWrapper
+graph_datasets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_datasets")
+sys.path.append(graph_datasets_dir)
+from graph_datasets.graph_visualizer import visualize_nxgraph
+graph_matching_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_matching")
+sys.path.append(graph_matching_dir)
+from graph_matching.utils import relative_positions, segments_distance
+
 
 class SyntheticDatasetGenerator():
 
-    def __init__(self, settings):
+    def __init__(self, settings, logger = None):
         print(f"SyntheticDatasetGenerator:", Fore.GREEN + "Initializing" + Fore.WHITE)
-
         self.settings = settings
-
+        self.logger = logger
         self.define_norm_limits()
-        self.create_dataset()
 
     def define_norm_limits(self):
-        grid_dims = self.settings["base_graphs"]["grid_dims"]
-        room_center_distances = self.settings["base_graphs"]["room_center_distances"]
-        self.norm_limits = {}
-        self.norm_limits["ws"] = {"min": np.array([-room_center_distances[0]/2,-room_center_distances[0]/2,-room_center_distances[0]/2, -room_center_distances[1]/2,-room_center_distances[1]/2,-room_center_distances[1]/2, -1, -1]),\
-                        "max": np.array([room_center_distances[0]*grid_dims[0],room_center_distances[0]*grid_dims[0],room_center_distances[0]*grid_dims[0],room_center_distances[1]*grid_dims[1],room_center_distances[1]*grid_dims[1],room_center_distances[1]*grid_dims[1], 1,1])}
+        playground_size = self.settings["base_graphs"]["playground_size"]
+        max_room_entry_size = self.settings["base_graphs"]["max_room_entry_size"][-1]
+        max_room_center_distances = self.settings["base_graphs"]["room_center_distances"][-1]
+        init_feat_keys = self.settings["initial_features"]
+        max_building_size = max_room_entry_size*max_room_center_distances*2
+
+        def add_features(type, feature_keys, working_dict):
+            if type == "ws_node":
+                if feature_keys[0] == "centroid":
+                    working_dict["min"] = np.concatenate([working_dict["min"], -np.array(playground_size)/2 - max_building_size])
+                    working_dict["max"] = np.concatenate([working_dict["max"], np.array(playground_size)/2 + max_building_size])
+                elif feature_keys[0] == "length":
+                    working_dict["min"] = np.concatenate([working_dict["min"], [max_room_center_distances]])
+                    working_dict["max"] = np.concatenate([working_dict["max"], [max_building_size]]) #, [np.log(max_room_entry_size*max_room_center_distances)]])
+                elif feature_keys[0] == "normals":
+                    working_dict["min"] = np.concatenate([working_dict["min"],[-1,-1]])
+                    working_dict["max"] = np.concatenate([working_dict["max"],[1,1]])
+
+            elif type == "edge":
+                if feature_keys[0] == "relative_pos":
+                    working_dict["min"] = np.concatenate([working_dict["min"],-np.array([max_building_size,max_building_size])])
+                    working_dict["max"] = np.concatenate([working_dict["max"],np.array([max_building_size,max_building_size])])
+                elif feature_keys[0] == "min_dist":
+                    working_dict["min"] = np.concatenate([working_dict["min"],[0]])
+                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size]])  #,[np.log(max(playground_size)+1)]])
+            
+            if len(feature_keys) > 1:
+                working_dict = add_features(type, feature_keys[1:], working_dict)
+            return working_dict
+
+        self.norm_limits = {"ws_node" : add_features("ws_node", init_feat_keys["ws_node"], {"min": [], "max":[]}), \
+                            "edge" : add_features("edge", init_feat_keys["edge"], {"min": [], "max":[]})}
+
+    def normalize_features(self, type, feats):
+        feats_norm = (feats-self.norm_limits[type]["min"])/(self.norm_limits[type]["max"]-self.norm_limits[type]["min"])
+        return feats_norm
 
     def create_dataset(self):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Generating Syntetic Dataset" + Fore.WHITE)
@@ -47,14 +82,14 @@ class SyntheticDatasetGenerator():
         grid_dims = [np.random.randint(self.settings["base_graphs"]["grid_dims"][0][0], self.settings["base_graphs"]["grid_dims"][0][1] + 1),
                      np.random.randint(self.settings["base_graphs"]["grid_dims"][1][0], self.settings["base_graphs"]["grid_dims"][1][1] + 1)]
         max_room_entry_size = np.random.randint(self.settings["base_graphs"]["max_room_entry_size"][0], self.settings["base_graphs"]["max_room_entry_size"][1] + 1)
+        min_room_entry_size = np.random.randint(self.settings["base_graphs"]["min_room_entry_size"][0], self.settings["base_graphs"]["min_room_entry_size"][1] + 1)
 
         ### Base matrix
         base_matrix = np.zeros(grid_dims)
-        room_n = 0
+        room_n = 1
         for i in range(base_matrix.shape[0]):
             for j in range(base_matrix.shape[1]):
                 if base_matrix[i,j] == 0.:
-                    room_n += 1
                     aux_col = np.where(base_matrix[i:,j] != 0)[0]
                     aux_row = np.where(base_matrix[i,j:] != 0)[0]
                     if len(aux_col) != 0:
@@ -66,12 +101,17 @@ class SyntheticDatasetGenerator():
                     else:
                         remaining_y = len(base_matrix[i,j:])
                     remaining = [remaining_x, remaining_y]
-                    room_entry_size = [min(remaining[0], np.random.randint(low=1, high=max_room_entry_size+1, size=(1))[0]),\
-                                    min(remaining[1], np.random.randint(low=1, high=max_room_entry_size+1, size=(1))[0])]
+                    room_entry_size = [min(remaining[0], np.random.randint(low=min_room_entry_size+1, high=max_room_entry_size+1, size=(1))[0]),\
+                                       min(remaining[1], np.random.randint(low=min_room_entry_size+1, high=max_room_entry_size+1, size=(1))[0])]
+
+                    if (room_entry_size[0] >= min_room_entry_size) & (room_entry_size[1] >= min_room_entry_size):
+                        room_id = room_n
+                        room_n += 1
+                    else:
+                        room_id = -1
                     for ii in range(room_entry_size[0]):
                         for jj in range(room_entry_size[1]):
-                            base_matrix[i+ii, j+jj] = room_n
-
+                            base_matrix[i+ii, j+jj] = room_id
         self.max_n_rooms = max(self.max_n_rooms, room_n)
         return base_matrix
 
@@ -79,7 +119,7 @@ class SyntheticDatasetGenerator():
     def generate_graph_from_base_matrix(self, base_matrix, add_noise = False, add_multiview = False):
         graph = GraphWrapper()
         room_center_distances = self.settings["base_graphs"]["room_center_distances"]
-        wall_thickness = self.settings["base_graphs"]["wall_thickness"]
+        wall_thickness = np.random.uniform(self.settings["base_graphs"]["wall_thickness"][0], self.settings["base_graphs"]["wall_thickness"][1])
 
         if add_noise:
             if self.settings["noise"]["global"]["active"]:
@@ -90,7 +130,9 @@ class SyntheticDatasetGenerator():
                 noise_global_rotation_angle = 0
 
         ### Rooms
-        for base_matrix_room_id in np.unique(base_matrix):
+        room_ids = np.unique(base_matrix)
+        room_ids = np.delete(room_ids, np.where(room_ids == -1))
+        for base_matrix_room_id in room_ids:
             occurrencies = np.argwhere(np.where(base_matrix == base_matrix_room_id, True, False))
             limits = [occurrencies[0],occurrencies[-1]]
             room_entry_size = [limits[1][0] - limits[0][0] + 1, limits[1][1] - limits[0][1] + 1]
@@ -131,6 +173,8 @@ class SyntheticDatasetGenerator():
         ### Wall surfaces
         room_nodes_data = copy.deepcopy(graph.get_attributes_of_all_nodes())
         canonic_normals = [[1,0,0],[0,1,0],[-1,0,0],[0,-1,0]]
+
+        
         for node_data in room_nodes_data:
             normals = copy.deepcopy(canonic_normals)
             if add_noise:
@@ -151,23 +195,35 @@ class SyntheticDatasetGenerator():
                 ws_length = abs(np.dot(np.array(node_data[1]['area']),canonic_normals[i]))
                 ws_limit_1 = ws_center + abs(np.dot(np.array(node_data[1]['area'])/2,np.array(orthogonal_canonic_normal)))*np.array(orthogonal_normal)
                 ws_limit_2 = ws_center + abs(np.dot(np.array(node_data[1]['area'])/2,-np.array(orthogonal_canonic_normal)))*(-np.array(orthogonal_normal))
-                x = np.concatenate([ws_center[:2], [ws_length], ws_normal[:2]]).astype(np.float32)
-                # x_norm = (x-self.norm_limits["ws"]["min"])/(self.norm_limits["ws"]["max"]-self.norm_limits["ws"]["min"])
-                x_norm = x
-                self.len_ws_embedding = len(x)
+                
+                # print(f"flag ws_length {ws_length}")
+                
+                def add_ws_node_features(feature_keys, feats):
+                    if feature_keys[0] == "centroid":
+                        feats = np.concatenate([feats, ws_center[:2]]).astype(np.float32)
+                    elif feature_keys[0] == "length":
+                        
+                        feats = np.concatenate([feats, [ws_length]]).astype(np.float32)   #, [np.log(ws_length)]]).astype(np.float32)
+                    elif feature_keys[0] == "normals":
+                        feats = np.concatenate([feats, ws_normal[:2]]).astype(np.float32)
+                    if len(feature_keys) > 1:
+                        feats = add_ws_node_features(feature_keys[1:], feats)
+                    return feats
+        
+                x = add_ws_node_features(self.settings["initial_features"]["ws_node"], [])
                 y = int(node_data[0])
                 geometric_info = np.concatenate([ws_center, ws_normal])
                 color_map = ["green", "orange", "red", "pink"]
                 color_map = ["black", "black", "black", "black"]
 
-                graph.add_nodes([(node_ID,{"type" : "ws","center" : ws_center, "x" : x_norm, "y" : y, "normal" : ws_normal, "Geometric_info" : geometric_info,\
+                graph.add_nodes([(node_ID,{"type" : "ws","center" : ws_center, "x" : x, "y" : y, "normal" : ws_normal, "Geometric_info" : geometric_info,\
                                            "viz_type" : "Line", "viz_data" : [ws_limit_1[:2],ws_limit_2[:2]], "viz_feat" : color_map[i],\
                                            "canonic_normal_index" : canonic_normals[i], "linewidth": 2.0, "limits": [ws_limit_1,ws_limit_2]})])
                 graph.add_edges([(node_ID, node_data[0], {"type": "ws_belongs_room", "x": [], "viz_feat" : 'b', "linewidth":1.0, "alpha":0.5})])
 
                 ### Fully connected version
                 for prior_ws_i in range(i):
-                    x = segments_distance(graph.get_attributes_of_node(node_ID),graph.get_attributes_of_node(node_ID-(prior_ws_i+1)))
+                    x = segments_distance(graph.get_attributes_of_node(node_ID)["limits"],graph.get_attributes_of_node(node_ID-(prior_ws_i+1))["limits"])
                     graph.add_edges([(node_ID, node_ID-(prior_ws_i+1), {"type": "ws_same_room", "x":x, "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
                 # ### Only consecutive wall surfaces
                 # if i > 0:
@@ -193,9 +249,9 @@ class SyntheticDatasetGenerator():
                     compared_ij = [i + ij_difference[0], j + ij_difference[1]]
                     current_room_id = base_matrix[i,j]
                     comparison = np.array(base_matrix.shape) > np.array(compared_ij)
-                    if comparison.all() and current_room_id != base_matrix[compared_ij[0],compared_ij[1]]:
+                    if current_room_id != -1.0 and comparison.all() and current_room_id != base_matrix[compared_ij[0],compared_ij[1]]:
                         compared_room_id = base_matrix[compared_ij[0],compared_ij[1]]
-                        if (current_room_id, compared_room_id) not in explored_walls:
+                        if compared_room_id != -1.0 and (current_room_id, compared_room_id) not in explored_walls:
                             explored_walls.append((current_room_id, compared_room_id))
                             current_room_neigh = graph.get_neighbourhood_graph(current_room_id-1).filter_graph_by_node_types(["ws"])
                             current_room_neigh_ws_id = list(current_room_neigh.filter_graph_by_node_attributes({"canonic_normal_index" : ij_difference_3D}).get_nodes_ids())[0]
@@ -215,8 +271,11 @@ class SyntheticDatasetGenerator():
                             graph.add_edges([(current_room_neigh_ws_id, compared_room_neigh_ws_id, {"type": "ws_same_wall", "viz_feat": "c", "linewidth":1.0, "alpha":0.5})])
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
-        graph.to_undirected()
+        # graph.to_undirected()
         return graph
+    
+    def set_dataset(self, tag, nxdata):
+        self.graphs[tag] = nxdata
     
     def get_filtered_datset(self, node_types, edge_types):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Filtering Dataset" + Fore.WHITE)
@@ -235,7 +294,6 @@ class SyntheticDatasetGenerator():
 
     def extend_nxdataset(self, nxdataset, new_edge_types):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
-        # hdataset = []
         new_nxdataset = []
 
         for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
@@ -269,12 +327,29 @@ class SyntheticDatasetGenerator():
                     target_nodes_ids = all_target_nodes_ids[i]
                     for target_node_id in target_nodes_ids:
                         tuple_direct, tuple_inverse = (base_node_id, target_node_id), (target_node_id, base_node_id)
-                        x = segments_distance(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
+                        distance = segments_distance(base_graph.get_attributes_of_node(base_node_id)["limits"],base_graph.get_attributes_of_node(target_node_id)["limits"])
+                        rel_pos_1, _ = relative_positions(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
+                        # self.logger.info(f"flag distance, {distance}")
+                        # self.logger.info(f"flag rel_pos_1, {rel_pos_1}")
+                        # print(f"flag distance, {distance}")
+                        # print(f"flag rel_pos_1, {rel_pos_1}")
+                        def add_edge_features(feature_keys, feats):
+                            if feature_keys[0] == "min_dist":
+                                feats = np.concatenate([feats, distance]).astype(np.float32)  #, np.log(distance+1)]).astype(np.float32)
+                            elif feature_keys[0] == "relative_pos":
+                                feats = np.concatenate([feats, rel_pos_1[:2]]).astype(np.float32)
+                            if len(feature_keys) > 1:
+                                feats = add_edge_features(feature_keys[1:], feats)
+                            return feats
+                        x = add_edge_features(self.settings["initial_features"]["edge"], [])
+
                         if tuple_direct in positive_gt_edge_ids or tuple_inverse in positive_gt_edge_ids:
                             if not settings["use_gt"]:
                                 new_edges.append((base_node_id, target_node_id,{"type": new_edge_types, "label": 1, "x":x, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
+                                # new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 1, "x":x_2, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
                         else:
                             new_edges.append((base_node_id, target_node_id,{"type": new_edge_types, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                            # new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 0, "x":x_2, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
 
                 base_graph.unfreeze()
                 base_graph.add_edges(new_edges)
@@ -293,6 +368,7 @@ class SyntheticDatasetGenerator():
                         tuple_direct = (base_node_id, target_node_id)
                         tuple_inverse = (tuple_direct[1], tuple_direct[0])
                         if tuple_direct not in list(base_graph.get_edges_ids()) and tuple_inverse not in list(base_graph.get_edges_ids()):
+                            ### TODO Include X
                             new_edges.append((tuple_direct[0], tuple_direct[1],{"type": new_edge_types, "label": 0, "viz_feat" : 'blue', "linewidth":1.0, "alpha":0.5}))
 
                     base_graph.unfreeze()
@@ -306,7 +382,7 @@ class SyntheticDatasetGenerator():
         val_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["val"]-self.settings["training_split"]["test"]))
         test_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["test"]))
         # hdataset_dict = {"train" : hdataset[:val_start_index], "val" : hdataset[val_start_index:test_start_index],"test" : hdataset[test_start_index:-1],"inference" : [hdataset[-1]]}
-        extended_nxdatset = {"train" : new_nxdataset[:val_start_index], "val" : new_nxdataset[val_start_index:test_start_index],"test" : new_nxdataset[test_start_index:-1],"inference" : [new_nxdataset[-1]]}
+        extended_nxdatset = {"train" : new_nxdataset[:val_start_index], "val" : new_nxdataset[val_start_index:test_start_index],"test" : new_nxdataset[test_start_index:-1]}
 
         return extended_nxdatset
 
@@ -316,84 +392,23 @@ class SyntheticDatasetGenerator():
         unparented_base_graph.add_edges(predictions)
         visualize_nxgraph(unparented_base_graph, image_name = image_name)
 
-# def minimum_distance_two_wallsurfaces(ws_1_def, ws_2_def):
-#     def minimum_distance_two_point_sets(set_1, set_2):
-#         min_distance = 99999
-#         for point_1 in set_1:
-#             for point_2 in set_2:
-#                 dist = math.dist(point_1, point_2)
-#                 if dist < min_distance:
-#                     min_distance = dist
-#         print(f"flag type{type(min_distance)}")
-#         return np.array([min_distance])
-
-#     set_1 = np.concatenate([[np.array(ws_1_def["center"])], ws_1_def["limits"]])
-#     set_2 = np.concatenate([[np.array(ws_2_def["center"])], ws_2_def["limits"]])
-#     return minimum_distance_two_point_sets(set_1, set_2)
-
-
-def segments_distance(ws_1_def, ws_2_def):
-    """ distance between two segments in the plane:
-      one segment is (x11, y11) to (x12, y12)
-      the other is   (x21, y21) to (x22, y22)
-    """
-    def segments_intersect(x11, y11, x12, y12, x21, y21, x22, y22):
-        """ whether two segments in the plane intersect:
-            one segment is (x11, y11) to (x12, y12)
-            the other is   (x21, y21) to (x22, y22)
-        """
-        dx1 = x12 - x11
-        dy1 = y12 - y11
-        dx2 = x22 - x21
-        dy2 = y22 - y21
-        delta = dx2 * dy1 - dy2 * dx1
-        if delta == 0: return False  # parallel segments
-        s = (dx1 * (y21 - y11) + dy1 * (x11 - x21)) / delta
-        t = (dx2 * (y11 - y21) + dy2 * (x21 - x11)) / (-delta)
-        return (0 <= s <= 1) and (0 <= t <= 1)
-
-    def point_segment_distance(px, py, x1, y1, x2, y2):
-        dx = x2 - x1
-        dy = y2 - y1
-        if dx == dy == 0:  # the segment's just a point
-            return math.hypot(px - x1, py - y1)
-
-        # Calculate the t that minimizes the distance.
-        t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
-
-        # See if this represents one of the segment's
-        # end points or a point in the middle.
-        if t < 0:
-            dx = px - x1
-            dy = py - y1
-        elif t > 1:
-            dx = px - x2
-            dy = py - y2
-        else:
-            near_x = x1 + t * dx
-            near_y = y1 + t * dy
-            dx = px - near_x
-            dy = py - near_y
-
-        return math.hypot(dx, dy)
-
-    p11, p12, p21, p22 = ws_1_def["limits"][0], ws_1_def["limits"][1], ws_2_def["limits"][0], ws_2_def["limits"][1]
-    x11, y11 = p11[0],p11[1]
-    x12, y12 = p12[0],p12[1]
-    x21, y21 = p21[0],p21[1]
-    x22, y22 = p22[0],p22[1]
-
-    if segments_intersect(x11, y11, x12, y12, x21, y21, x22, y22): return np.array([0])
-    # try each of the 4 vertices w/the other segment
-    distances = []
-    distances.append(point_segment_distance(x11, y11, x21, y21, x22, y22))
-    distances.append(point_segment_distance(x12, y12, x21, y21, x22, y22))
-    distances.append(point_segment_distance(x21, y21, x11, y11, x12, y12))
-    distances.append(point_segment_distance(x22, y22, x11, y11, x12, y12))
-    return np.array([min(distances)])
-
-                
-
-
-
-
+    
+    def normalize_features_nxdatset(self, nxdatset):
+        print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Normalizing Dataset" + Fore.WHITE)
+        normalized_nxdatset = {}
+        for tag in nxdatset:
+            graphs = []
+            for graph in nxdatset[tag]:
+                for node_id in list(graph.get_nodes_ids()):
+                    attrs = graph.get_attributes_of_node(node_id)
+                    if attrs["type"] == "ws":
+                        attrs["x"] = self.normalize_features("ws_node", attrs["x"])
+                        graph.update_node_attrs(node_id, attrs)
+                for edge_id in list(graph.get_edges_ids()):
+                    attrs = graph.get_attributes_of_edge(edge_id)
+                    attrs["x"] = self.normalize_features("edge", attrs["x"])
+                    graph.update_edge_attrs(edge_id, attrs)
+                graphs.append(graph)
+            normalized_nxdatset[tag] = graphs
+            
+        return normalized_nxdatset
