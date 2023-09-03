@@ -1,11 +1,12 @@
 import numpy as np
 import copy
 import itertools
-import random, math
+import random, math, time
 import tqdm
 from scipy.spatial.transform import Rotation as R
 from sklearn.neighbors import KDTree
 from colorama import Fore, Back, Style
+import seaborn as sns
 
 import sys
 import os
@@ -22,18 +23,22 @@ from graph_matching.utils import relative_positions, segments_distance
 
 class SyntheticDatasetGenerator():
 
-    def __init__(self, settings, logger = None):
+    def __init__(self, settings, logger = None, report_path = ""):
         print(f"SyntheticDatasetGenerator:", Fore.GREEN + "Initializing" + Fore.WHITE)
         self.settings = settings
         self.logger = logger
+        self.report_path = report_path
         self.define_norm_limits()
 
     def define_norm_limits(self):
         playground_size = self.settings["base_graphs"]["playground_size"]
         max_room_entry_size = self.settings["base_graphs"]["max_room_entry_size"][-1]
+        min_room_entry_size = self.settings["base_graphs"]["min_room_entry_size"][0]
         max_room_center_distances = self.settings["base_graphs"]["room_center_distances"][-1]
+        min_room_center_distances = self.settings["base_graphs"]["room_center_distances"][0]
         init_feat_keys = self.settings["initial_features"]
-        max_building_size = max_room_entry_size*max_room_center_distances*2
+        max_building_size = max_room_entry_size*max_room_center_distances
+        min_building_size = min_room_entry_size*min_room_center_distances
 
         def add_features(type, feature_keys, working_dict):
             if type == "ws_node":
@@ -41,7 +46,7 @@ class SyntheticDatasetGenerator():
                     working_dict["min"] = np.concatenate([working_dict["min"], -np.array(playground_size)/2 - max_building_size])
                     working_dict["max"] = np.concatenate([working_dict["max"], np.array(playground_size)/2 + max_building_size])
                 elif feature_keys[0] == "length":
-                    working_dict["min"] = np.concatenate([working_dict["min"], [max_room_center_distances]])
+                    working_dict["min"] = np.concatenate([working_dict["min"], [min_building_size]])
                     working_dict["max"] = np.concatenate([working_dict["max"], [max_building_size]]) #, [np.log(max_room_entry_size*max_room_center_distances)]])
                 elif feature_keys[0] == "normals":
                     working_dict["min"] = np.concatenate([working_dict["min"],[-1,-1]])
@@ -118,6 +123,7 @@ class SyntheticDatasetGenerator():
 
     def generate_graph_from_base_matrix(self, base_matrix, add_noise = False, add_multiview = False):
         graph = GraphWrapper()
+        graph.to_undirected()
         room_center_distances = self.settings["base_graphs"]["room_center_distances"]
         wall_thickness = np.random.uniform(self.settings["base_graphs"]["wall_thickness"][0], self.settings["base_graphs"]["wall_thickness"][1])
 
@@ -139,7 +145,7 @@ class SyntheticDatasetGenerator():
             node_ID = len(graph.get_nodes_ids())
             room_center = np.array([room_center_distances[0]*(limits[0][0] + (room_entry_size[0]-1)/2), room_center_distances[1]*(limits[0][1]+(room_entry_size[1]-1)/2), 0])
             room_orientation_angle = 0.0
-            room_area = [room_center_distances[0]*room_entry_size[0] - wall_thickness*2, room_center_distances[1]*room_entry_size[1] - wall_thickness*2, 0]
+            room_area = [room_center_distances[0]*room_entry_size[0] - wall_thickness, room_center_distances[1]*room_entry_size[1] - wall_thickness, 0]
             if add_noise:
                 if self.settings["noise"]["global"]["active"]:
                     room_orientation_angle += noise_global_rotation_angle
@@ -169,7 +175,7 @@ class SyntheticDatasetGenerator():
             masks = np.array(masks)
             for i, node_id in enumerate(list(graph.get_nodes_ids())):
                 graph.update_node_attrs(node_id, {"view" : np.squeeze(np.argwhere(masks[:, i]), axis= 1)+1})
-        
+
         ### Wall surfaces
         room_nodes_data = copy.deepcopy(graph.get_attributes_of_all_nodes())
         canonic_normals = [[1,0,0],[0,1,0],[-1,0,0],[0,-1,0]]
@@ -195,8 +201,6 @@ class SyntheticDatasetGenerator():
                 ws_length = abs(np.dot(np.array(node_data[1]['area']),canonic_normals[i]))
                 ws_limit_1 = ws_center + abs(np.dot(np.array(node_data[1]['area'])/2,np.array(orthogonal_canonic_normal)))*np.array(orthogonal_normal)
                 ws_limit_2 = ws_center + abs(np.dot(np.array(node_data[1]['area'])/2,-np.array(orthogonal_canonic_normal)))*(-np.array(orthogonal_normal))
-                
-                # print(f"flag ws_length {ws_length}")
                 
                 def add_ws_node_features(feature_keys, feats):
                     if feature_keys[0] == "centroid":
@@ -271,7 +275,7 @@ class SyntheticDatasetGenerator():
                             graph.add_edges([(current_room_neigh_ws_id, compared_room_neigh_ws_id, {"type": "ws_same_wall", "viz_feat": "c", "linewidth":1.0, "alpha":0.5})])
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
-        # graph.to_undirected()
+
         return graph
     
     def set_dataset(self, tag, nxdata):
@@ -300,17 +304,25 @@ class SyntheticDatasetGenerator():
             nxdata = nxdataset[i]
             base_graph = copy.deepcopy(nxdata)
             positive_gt_edge_ids = list(base_graph.get_edges_ids())
-            if i == len(nxdataset)-1:
-                settings = self.settings["postprocess"]["final"]
-            else:
-                settings = self.settings["postprocess"]["training"]
-
+            settings = self.settings["postprocess"]["training"]
+            base_graph.unfreeze()
+            
             ### Set positive label
             if settings["use_gt"]:
                 for edge_id in list(base_graph.get_edges_ids()):
                     base_graph.update_edge_attrs(edge_id, {"label":1, "viz_feat" : 'green'})
             else:
                 base_graph.remove_all_edges()
+            base_graph.to_directed()
+                
+            ### NODE DROPOUT
+            if settings["node_dropout"] > 0.:
+                node_ids = list(base_graph.get_nodes_ids())
+                node_ids_selected = []
+                for node_id in node_ids:
+                    if np.random.random_sample() < settings["node_dropout"]:
+                        node_ids_selected.append(node_id)
+                base_graph.remove_nodes(node_ids_selected)
 
             ### Include K nearest neighbouors edges
             if settings["K_nearest"] > 0:
@@ -323,16 +335,13 @@ class SyntheticDatasetGenerator():
                 base_nodes_ids = query[:, 0]
                 all_target_nodes_ids = query[:, 1:]
                 new_edges = []
+                counter = 0
                 for i, base_node_id in enumerate(base_nodes_ids):
                     target_nodes_ids = all_target_nodes_ids[i]
                     for target_node_id in target_nodes_ids:
                         tuple_direct, tuple_inverse = (base_node_id, target_node_id), (target_node_id, base_node_id)
                         distance = segments_distance(base_graph.get_attributes_of_node(base_node_id)["limits"],base_graph.get_attributes_of_node(target_node_id)["limits"])
                         rel_pos_1, _ = relative_positions(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
-                        # self.logger.info(f"flag distance, {distance}")
-                        # self.logger.info(f"flag rel_pos_1, {rel_pos_1}")
-                        # print(f"flag distance, {distance}")
-                        # print(f"flag rel_pos_1, {rel_pos_1}")
                         def add_edge_features(feature_keys, feats):
                             if feature_keys[0] == "min_dist":
                                 feats = np.concatenate([feats, distance]).astype(np.float32)  #, np.log(distance+1)]).astype(np.float32)
@@ -342,17 +351,20 @@ class SyntheticDatasetGenerator():
                                 feats = add_edge_features(feature_keys[1:], feats)
                             return feats
                         x = add_edge_features(self.settings["initial_features"]["edge"], [])
-
                         if tuple_direct in positive_gt_edge_ids or tuple_inverse in positive_gt_edge_ids:
                             if not settings["use_gt"]:
-                                new_edges.append((base_node_id, target_node_id,{"type": new_edge_types, "label": 1, "x":x, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
+                                new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 1, "x":x, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
                                 # new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 1, "x":x_2, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
+                                counter += 1
+                            else:
+                                new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                                counter += 1
                         else:
-                            new_edges.append((base_node_id, target_node_id,{"type": new_edge_types, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                            new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                            counter += 1
                             # new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 0, "x":x_2, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
-
                 base_graph.unfreeze()
-                base_graph.add_edges(new_edges)
+                base_graph.add_edges(new_edges)                
 
             ### Include random edges
             if settings["K_random"] > 0:
@@ -371,17 +383,14 @@ class SyntheticDatasetGenerator():
                             ### TODO Include X
                             new_edges.append((tuple_direct[0], tuple_direct[1],{"type": new_edge_types, "label": 0, "viz_feat" : 'blue', "linewidth":1.0, "alpha":0.5}))
 
-                    base_graph.unfreeze()
-                    base_graph.add_edges(new_edges)
+                base_graph.unfreeze()
+                base_graph.add_edges(new_edges)
 
-            # hdata = from_networkxwrapper_2_heterodata(base_graph)
-            # hdataset.append(hdata)
+            base_graph.relabel_nodes(mapping = False, copy=True)
             new_nxdataset.append(base_graph)
 
-        
         val_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["val"]-self.settings["training_split"]["test"]))
         test_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["test"]))
-        # hdataset_dict = {"train" : hdataset[:val_start_index], "val" : hdataset[val_start_index:test_start_index],"test" : hdataset[test_start_index:-1],"inference" : [hdataset[-1]]}
         extended_nxdatset = {"train" : new_nxdataset[:val_start_index], "val" : new_nxdataset[val_start_index:test_start_index],"test" : new_nxdataset[test_start_index:-1]}
 
         return extended_nxdatset
@@ -396,19 +405,97 @@ class SyntheticDatasetGenerator():
     def normalize_features_nxdatset(self, nxdatset):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Normalizing Dataset" + Fore.WHITE)
         normalized_nxdatset = {}
-        for tag in nxdatset:
+        x_history = {"raw": {}, "normalized": {}}
+        for tag in ["train"]:
             graphs = []
             for graph in nxdatset[tag]:
                 for node_id in list(graph.get_nodes_ids()):
-                    attrs = graph.get_attributes_of_node(node_id)
-                    if attrs["type"] == "ws":
-                        attrs["x"] = self.normalize_features("ws_node", attrs["x"])
-                        graph.update_node_attrs(node_id, attrs)
+                    node_attrs = graph.get_attributes_of_node(node_id)
+                    if node_attrs["type"] == "ws":
+                        if "nodes" not in x_history["raw"].keys():
+                            x_history["raw"]["nodes"] = np.array([node_attrs["x"]])
+                        else:
+                            x_history["raw"]["nodes"] = np.concatenate([x_history["raw"]["nodes"], np.array([node_attrs["x"]])],axis=0)
+
+                        new_node_attrs = copy.deepcopy(node_attrs)
+                        new_node_attrs["x"] = self.normalize_features("ws_node", node_attrs["x"])
+                        graph.update_node_attrs(node_id, new_node_attrs)
+                        if "nodes" not in x_history["normalized"].keys():
+                            x_history["normalized"]["nodes"] = np.array([new_node_attrs["x"]])
+                        else:
+                            x_history["normalized"]["nodes"] = np.concatenate([x_history["normalized"]["nodes"], np.array([new_node_attrs["x"]])],axis=0)
+
                 for edge_id in list(graph.get_edges_ids()):
-                    attrs = graph.get_attributes_of_edge(edge_id)
-                    attrs["x"] = self.normalize_features("edge", attrs["x"])
-                    graph.update_edge_attrs(edge_id, attrs)
+                    edge_attrs = graph.get_attributes_of_edge(edge_id)
+                    if "edges" not in x_history["raw"].keys():
+                        x_history["raw"]["edges"] = np.array([edge_attrs["x"]])
+                    else:
+                        x_history["raw"]["edges"] = np.concatenate([x_history["raw"]["edges"], np.array([edge_attrs["x"]])],axis=0)
+
+                    edge_attrs["x"] = self.normalize_features("edge", edge_attrs["x"])
+
+                    graph.update_edge_attrs(edge_id, edge_attrs)
+                    if "edges" not in x_history["normalized"].keys():
+                        x_history["normalized"]["edges"] = np.array([edge_attrs["x"]])
+                    else:
+                        x_history["normalized"]["edges"] = np.concatenate([x_history["normalized"]["edges"], np.array([edge_attrs["x"]])],axis=0)
+
                 graphs.append(graph)
             normalized_nxdatset[tag] = graphs
             
+        self.plot_input_histograms(x_history)
         return normalized_nxdatset
+    
+
+    def plot_input_histograms(self, x_history):
+        import matplotlib.pyplot as plt
+        # set a grey background (use sns.set_theme() if seaborn version 0.11.0 or above) 
+        sns.set(style="darkgrid")
+        # fig, axs = plt.subplots(2, 3, figsize=(14, 14))
+        fig = plt.figure(constrained_layout=True)
+        fig.suptitle('Nodes histogram')
+        subfigs = fig.subfigures(nrows=2, ncols=1)
+
+        subfigs[0].suptitle(f'Raw')
+        axs = subfigs[0].subplots(nrows=1, ncols=3)
+        sns.histplot(data=x_history["raw"]["nodes"][:,0],  kde=True, color="skyblue", ax=axs[0])
+        axs[0].set_title("Length")
+        sns.histplot(data=x_history["raw"]["nodes"][:,1], kde=True, color="olive", ax=axs[1])
+        axs[1].set_title("Normal X")
+        sns.histplot(data=x_history["raw"]["nodes"][:,2],  kde=True, color="gold", ax=axs[2])
+        axs[2].set_title("Normal Y")
+
+        subfigs[1].suptitle(f'Normalized')
+        axs = subfigs[1].subplots(nrows=1, ncols=3)
+        sns.histplot(data=x_history["normalized"]["nodes"][:,0], kde=True, color="skyblue", ax=axs[0])
+        axs[0].set_title("Length")
+        sns.histplot(data=x_history["normalized"]["nodes"][:,1], kde=True, color="olive", ax=axs[1])
+        axs[1].set_title("Normal X")
+        sns.histplot(data=x_history["normalized"]["nodes"][:,2], kde=True, color="gold", ax=axs[2])
+        axs[2].set_title("Normal Y")
+
+        plt.savefig(os.path.join(self.report_path, "Nodes histogram.png"), bbox_inches='tight')
+
+        fig = plt.figure(constrained_layout=True)
+        fig.suptitle('Edges histogram')
+        subfigs = fig.subfigures(nrows=2, ncols=1)
+
+        subfigs[0].suptitle(f'Raw')
+        axs = subfigs[0].subplots(nrows=1, ncols=3)
+        sns.histplot(data=x_history["raw"]["edges"][:,0],  kde=True, color="skyblue", ax=axs[0])
+        axs[0].set_title("min(distance)")
+        sns.histplot(data=x_history["raw"]["edges"][:,1], kde=True, color="olive", ax=axs[1])
+        axs[1].set_title("Relat. position X")
+        sns.histplot(data=x_history["raw"]["edges"][:,2],  kde=True, color="gold", ax=axs[2])
+        axs[2].set_title("Relat. position Y")
+
+        subfigs[1].suptitle(f'Normalized')
+        axs = subfigs[1].subplots(nrows=1, ncols=3)
+        sns.histplot(data=x_history["normalized"]["edges"][:,0], kde=True, color="skyblue", ax=axs[0])
+        axs[0].set_title("min(distance)")
+        sns.histplot(data=x_history["normalized"]["edges"][:,1], kde=True, color="olive", ax=axs[1])
+        axs[1].set_title("Relat. position X")
+        sns.histplot(data=x_history["normalized"]["edges"][:,2], kde=True, color="gold", ax=axs[2])
+        axs[2].set_title("Relat. position Y")
+
+        plt.savefig(os.path.join(self.report_path, "Edges histogram.png"), bbox_inches='tight')
