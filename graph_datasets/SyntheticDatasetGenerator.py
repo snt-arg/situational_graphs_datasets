@@ -7,6 +7,7 @@ from scipy.spatial.transform import Rotation as R
 from sklearn.neighbors import KDTree
 from colorama import Fore, Back, Style
 import seaborn as sns
+import matplotlib.pyplot as plt
 
 import sys
 import os
@@ -79,9 +80,14 @@ class SyntheticDatasetGenerator():
         self.max_n_rooms = 0
         for n_building in tqdm.tqdm(range(n_buildings), colour="green"):
             base_matrix = self.generate_base_matrix()
+
             self.graphs["original"].append(self.generate_graph_from_base_matrix(base_matrix, add_noise= False))
             self.graphs["noise"].append(self.generate_graph_from_base_matrix(base_matrix, add_noise= True))
             self.graphs["views"].append(self.generate_graph_from_base_matrix(base_matrix, add_noise= False, add_multiview=True))
+        # fig = plt.figure(constrained_layout=True)
+        # fig.suptitle('Nodes histogram')
+        # plt.show()
+        # time.sleep(999)
 
     def generate_base_matrix(self):
         grid_dims = [np.random.randint(self.settings["base_graphs"]["grid_dims"][0][0], self.settings["base_graphs"]["grid_dims"][0][1] + 1),
@@ -188,9 +194,8 @@ class SyntheticDatasetGenerator():
                     per_ws_noise_rot_angle = (np.random.rand(4)-np.ones(4)*0.5) * 360 * self.settings["noise"]["ws"]["rotation"]
                 else:
                     per_ws_noise_rot_angle = [0,0,0,0]
-
                 normals = np.array([list(R.from_euler("Z", node_data[1]["orientation_angle"] + per_ws_noise_rot_angle[j], degrees= True).apply(normals[j])) for j in range(4)])
-
+                
             for i in range(4):
                 node_ID = len(graph.get_nodes_ids())
                 orthogonal_normal = R.from_euler("Z", 90, degrees= True).apply(copy.deepcopy(normals[i]))
@@ -206,14 +211,13 @@ class SyntheticDatasetGenerator():
                     if feature_keys[0] == "centroid":
                         feats = np.concatenate([feats, ws_center[:2]]).astype(np.float32)
                     elif feature_keys[0] == "length":
-                        
                         feats = np.concatenate([feats, [ws_length]]).astype(np.float32)   #, [np.log(ws_length)]]).astype(np.float32)
                     elif feature_keys[0] == "normals":
                         feats = np.concatenate([feats, ws_normal[:2]]).astype(np.float32)
                     if len(feature_keys) > 1:
                         feats = add_ws_node_features(feature_keys[1:], feats)
                     return feats
-        
+
                 x = add_ws_node_features(self.settings["initial_features"]["ws_node"], [])
                 y = int(node_data[0])
                 geometric_info = np.concatenate([ws_center, ws_normal])
@@ -296,7 +300,7 @@ class SyntheticDatasetGenerator():
         return nx_graphs
     
 
-    def extend_nxdataset(self, nxdataset, new_edge_types):
+    def extend_nxdataset(self, nxdataset, new_edge_types, stage):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
         new_nxdataset = []
 
@@ -304,7 +308,7 @@ class SyntheticDatasetGenerator():
             nxdata = nxdataset[i]
             base_graph = copy.deepcopy(nxdata)
             positive_gt_edge_ids = list(base_graph.get_edges_ids())
-            settings = self.settings["postprocess"]["training"]
+            settings = self.settings["postprocess"][stage]
             base_graph.unfreeze()
             
             ### Set positive label
@@ -404,51 +408,57 @@ class SyntheticDatasetGenerator():
     
     def normalize_features_nxdatset(self, nxdatset):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Normalizing Dataset" + Fore.WHITE)
+        generate_x_plots = False
         normalized_nxdatset = {}
         x_history = {"raw": {}, "normalized": {}}
-        for tag in ["train"]:
+        for tag in nxdatset.keys():
             graphs = []
             for graph in nxdatset[tag]:
-                for node_id in list(graph.get_nodes_ids()):
-                    node_attrs = graph.get_attributes_of_node(node_id)
+                new_graph = copy.deepcopy(graph)
+                for node_id in list(new_graph.get_nodes_ids()):
+                    node_attrs = new_graph.get_attributes_of_node(node_id)
                     if node_attrs["type"] == "ws":
-                        if "nodes" not in x_history["raw"].keys():
-                            x_history["raw"]["nodes"] = np.array([node_attrs["x"]])
-                        else:
-                            x_history["raw"]["nodes"] = np.concatenate([x_history["raw"]["nodes"], np.array([node_attrs["x"]])],axis=0)
+                        if generate_x_plots:
+                            if "nodes" not in x_history["raw"].keys():
+                                x_history["raw"]["nodes"] = np.array([node_attrs["x"]])
+                            else:
+                                x_history["raw"]["nodes"] = np.concatenate([x_history["raw"]["nodes"], np.array([node_attrs["x"]])],axis=0)
 
                         new_node_attrs = copy.deepcopy(node_attrs)
                         new_node_attrs["x"] = self.normalize_features("ws_node", node_attrs["x"])
-                        graph.update_node_attrs(node_id, new_node_attrs)
-                        if "nodes" not in x_history["normalized"].keys():
-                            x_history["normalized"]["nodes"] = np.array([new_node_attrs["x"]])
-                        else:
-                            x_history["normalized"]["nodes"] = np.concatenate([x_history["normalized"]["nodes"], np.array([new_node_attrs["x"]])],axis=0)
+                        new_graph.update_node_attrs(node_id, new_node_attrs)
+                        if generate_x_plots:
+                            if "nodes" not in x_history["normalized"].keys():
+                                x_history["normalized"]["nodes"] = np.array([new_node_attrs["x"]])
+                            else:
+                                x_history["normalized"]["nodes"] = np.concatenate([x_history["normalized"]["nodes"], np.array([new_node_attrs["x"]])],axis=0)
 
-                for edge_id in list(graph.get_edges_ids()):
-                    edge_attrs = graph.get_attributes_of_edge(edge_id)
-                    if "edges" not in x_history["raw"].keys():
-                        x_history["raw"]["edges"] = np.array([edge_attrs["x"]])
-                    else:
-                        x_history["raw"]["edges"] = np.concatenate([x_history["raw"]["edges"], np.array([edge_attrs["x"]])],axis=0)
+                for edge_id in list(new_graph.get_edges_ids()):
+                    edge_attrs = new_graph.get_attributes_of_edge(edge_id)
+                    if generate_x_plots:
+                        if "edges" not in x_history["raw"].keys():
+                            x_history["raw"]["edges"] = np.array([edge_attrs["x"]])
+                        else:
+                            x_history["raw"]["edges"] = np.concatenate([x_history["raw"]["edges"], np.array([edge_attrs["x"]])],axis=0)
 
                     edge_attrs["x"] = self.normalize_features("edge", edge_attrs["x"])
 
-                    graph.update_edge_attrs(edge_id, edge_attrs)
-                    if "edges" not in x_history["normalized"].keys():
-                        x_history["normalized"]["edges"] = np.array([edge_attrs["x"]])
-                    else:
-                        x_history["normalized"]["edges"] = np.concatenate([x_history["normalized"]["edges"], np.array([edge_attrs["x"]])],axis=0)
+                    new_graph.update_edge_attrs(edge_id, edge_attrs)
+                    if generate_x_plots:
+                        if "edges" not in x_history["normalized"].keys():
+                            x_history["normalized"]["edges"] = np.array([edge_attrs["x"]])
+                        else:
+                            x_history["normalized"]["edges"] = np.concatenate([x_history["normalized"]["edges"], np.array([edge_attrs["x"]])],axis=0)
 
-                graphs.append(graph)
+                graphs.append(new_graph)
             normalized_nxdatset[tag] = graphs
             
-        self.plot_input_histograms(x_history)
+        if generate_x_plots:
+            self.plot_input_histograms(x_history)
         return normalized_nxdatset
     
 
     def plot_input_histograms(self, x_history):
-        import matplotlib.pyplot as plt
         # set a grey background (use sns.set_theme() if seaborn version 0.11.0 or above) 
         sns.set(style="darkgrid")
         # fig, axs = plt.subplots(2, 3, figsize=(14, 14))
