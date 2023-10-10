@@ -6,7 +6,7 @@
         "min_room_entry_size" : [10,10],
         "room_center_distances" : [0.1,0.1],
         "wall_thickness" : [0.05,0.15],
-        "n_buildings" : 1000
+        "n_buildings" : 10
     },
     "noise":{
         "global":{
@@ -21,7 +21,7 @@
         },
         "ws": {
             "active": true,
-            "rotation": 0.004
+            "rotation": 0.015
         }
     },
     "multiview": {
@@ -37,7 +37,7 @@
             "use_gt": false,
             "K_nearest": 15,
             "K_random" : 0,
-            "node_dropout": 0.15
+            "node_dropout": 0.0
         },
         "final": {
             "use_gt": false,
