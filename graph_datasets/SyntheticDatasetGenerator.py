@@ -304,7 +304,8 @@ class SyntheticDatasetGenerator():
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
         new_nxdataset = []
 
-        for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
+        # for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
+        for i in range(len(nxdataset)):
             nxdata = nxdataset[i]
             base_graph = copy.deepcopy(nxdata)
             positive_gt_edge_ids = list(base_graph.get_edges_ids())

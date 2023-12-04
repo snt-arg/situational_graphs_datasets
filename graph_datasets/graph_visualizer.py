@@ -26,6 +26,9 @@ def visualize_nxgraph(graph, image_name):
         alpha = edge_data[2]["alpha"] if "alpha" in edge_data[2].keys() else 1.0
         plt.plot(points[:,0], points[:,1], viz_feat, linewidth=linewidth, alpha=alpha)
 
+        if "pred" in list(edge_data[2].keys()):
+            center_x, center_y = (points[0,0] + points[1,0]) / 2, (points[0,1] + points[1,1]) / 2
+            plt.text(center_x, center_y, "{:.2f}".format(edge_data[2]['pred']))
     # plt.xlim([-3, 23])
     # plt.ylim([-3, 23])
 
