@@ -20,6 +20,9 @@ from graph_datasets.graph_visualizer import visualize_nxgraph
 graph_matching_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_matching")
 sys.path.append(graph_matching_dir)
 from graph_matching.utils import relative_positions, segments_distance
+graph_reasoning_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning")
+sys.path.append(graph_reasoning_dir)
+from graph_reasoning.from_networkxwrapper_2_heterodata import from_networkxwrapper_2_heterodata
 
 
 class SyntheticDatasetGenerator():
@@ -69,7 +72,10 @@ class SyntheticDatasetGenerator():
                             "edge" : add_features("edge", init_feat_keys["edge"], {"min": [], "max":[]})}
 
     def normalize_features(self, type, feats):
-        feats_norm = (feats-self.norm_limits[type]["min"])/(self.norm_limits[type]["max"]-self.norm_limits[type]["min"])
+        if len(feats) != 0:
+            feats_norm = (feats-self.norm_limits[type]["min"])/(self.norm_limits[type]["max"]-self.norm_limits[type]["min"])
+        else:
+            feats_norm = []
         return feats_norm
 
     def create_dataset(self):
@@ -273,10 +279,10 @@ class SyntheticDatasetGenerator():
 
                             wall_center = list(np.array(current_room_neigh_ws_center) + (np.array(compared_room_neigh_ws_center) - np.array(current_room_neigh_ws_center))/2)
                             node_ID = len(graph.get_nodes_ids())
-                            graph.add_nodes([(node_ID,{"type" : "wall","center" : wall_center,"viz_type" : "Point", "viz_data" : wall_center[:2], "viz_feat" : 'co'})])
-                            graph.add_edges([(current_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall", "viz_feat": "c"}),(node_ID, compared_room_neigh_ws_id, {"type": "ws_belongs_wall",\
-                                             "viz_feat": "c", "linewidth":1.0, "alpha":0.5})])
-                            graph.add_edges([(current_room_neigh_ws_id, compared_room_neigh_ws_id, {"type": "ws_same_wall", "viz_feat": "c", "linewidth":1.0, "alpha":0.5})])
+                            graph.add_nodes([(node_ID,{"type" : "wall", "x" : wall_center, "center" : wall_center,"viz_type" : "Point", "viz_data" : wall_center[:2], "viz_feat" : 'co'})])
+                            graph.add_edges([(current_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall", "x": [], "viz_feat": "c"}),(node_ID, compared_room_neigh_ws_id, {"type": "ws_belongs_wall",\
+                                             "viz_feat": "c", "x": [], "linewidth":1.0, "alpha":0.5})])
+                            graph.add_edges([(current_room_neigh_ws_id, compared_room_neigh_ws_id, {"type": "ws_same_wall", "x": [], "viz_feat": "c", "linewidth":1.0, "alpha":0.5})])
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
 
@@ -293,7 +299,7 @@ class SyntheticDatasetGenerator():
             for base_graph in self.graphs[key]:
                 filtered_graph = base_graph.filter_graph_by_node_types(node_types)
                 filtered_graph.relabel_nodes() ### TODO What to do when Im dealing with different node types? Check tutorial
-                filtered_graph = filtered_graph.filter_graph_by_edge_types(edge_types)
+                filtered_graph = filtered_graph.filter_graph_by_edge_types([edge_type[1] for edge_type in edge_types])
                 nx_graphs_key.append(filtered_graph)
             nx_graphs[key] = nx_graphs_key
 
@@ -330,11 +336,11 @@ class SyntheticDatasetGenerator():
                 base_graph.remove_nodes(node_ids_selected)
 
             ### Include K nearest neighbouors edges
-            if settings["K_nearest"] > 0:
-                node_ids = list(base_graph.get_nodes_ids())
-                centers = np.array([attr[1]["center"] for attr in base_graph.get_attributes_of_all_nodes()])
+            if settings["K_nearest_max"] > 0:
+                node_ids = list(base_graph.filter_graph_by_node_types(settings["K_nearest_types"]).get_nodes_ids())
+                centers = np.array([base_graph.get_attributes_of_node(node_id)["center"] for node_id in node_ids])
                 kdt = KDTree(centers, leaf_size=30, metric='euclidean')
-                k = len(centers) if len(centers) <= settings["K_nearest"]+1 else settings["K_nearest"]+1
+                k = len(centers) if len(centers) <= settings["K_nearest_max"]+1 else settings["K_nearest_max"]+1
                 query = kdt.query(centers, k=k, return_distance=False)
                 query = np.array(list((map(lambda e: list(map(node_ids.__getitem__, e)), query))))
                 base_nodes_ids = query[:, 0]
@@ -372,13 +378,13 @@ class SyntheticDatasetGenerator():
                 base_graph.add_edges(new_edges)                
 
             ### Include random edges
-            if settings["K_random"] > 0:
-                nodes_ids = list(base_graph.get_nodes_ids())
+            if settings["K_random_max"] > 0:
+                nodes_ids = list(base_graph.filter_graph_by_node_types(settings["K_random_types"]).get_nodes_ids())
                 for base_node_id in nodes_ids:
                     potential_nodes_ids = copy.deepcopy(nodes_ids)
                     potential_nodes_ids.remove(base_node_id)
                     random.shuffle(potential_nodes_ids)
-                    random_nodes_ids = potential_nodes_ids[:settings["K_random"]]
+                    random_nodes_ids = potential_nodes_ids[:settings["K_random_max"]]
 
                     new_edges = []
                     for target_node_id in random_nodes_ids:
@@ -390,6 +396,12 @@ class SyntheticDatasetGenerator():
 
                 base_graph.unfreeze()
                 base_graph.add_edges(new_edges)
+
+            ### (un)direct
+            if settings["directed"]:
+                base_graph.to_directed()
+            else:
+                base_graph.to_undirected()
 
             base_graph.relabel_nodes(mapping = False, copy=True)
             new_nxdataset.append(base_graph)
@@ -510,3 +522,14 @@ class SyntheticDatasetGenerator():
         axs[2].set_title("Relat. position Y")
 
         plt.savefig(os.path.join(self.report_path, "Edges histogram.png"), bbox_inches='tight')
+
+
+    def dataset_to_hdata(self, nxdataset):
+        hdataset = {}
+        for key in nxdataset.keys():
+            nxdatset_key = nxdataset[key]
+            hdataset_key = []
+            for nxgraph in nxdatset_key:
+                hdataset_key.append(from_networkxwrapper_2_heterodata(nxgraph))
+            hdataset[key] = hdataset_key
+        return hdataset
