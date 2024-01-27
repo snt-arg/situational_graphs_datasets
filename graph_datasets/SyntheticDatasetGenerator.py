@@ -286,6 +286,18 @@ class SyntheticDatasetGenerator():
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
 
+        ### Floors
+        rooms_attrs = graph.filter_graph_by_node_attributes({"type" : "room"}).get_attributes_of_all_nodes()
+        room_ids = [attr[0] for attr in rooms_attrs]
+        room_centers = [attr[1]["center"] for attr in rooms_attrs]
+        floor_center = np.array(room_centers).sum(axis=0) / len(room_centers)
+        floor_node_id = len(graph.get_nodes_ids())
+        graph.add_nodes([(floor_node_id,{"type" : "wall", "x" : floor_center, "center" : floor_center,\
+                            "viz_type" : "Point", "viz_data" : floor_center[:2], "viz_feat" : 'oC1'})])
+        for room_id in room_ids:
+            graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "orange",\
+                                                        "linewidth":1.0, "alpha":0.5})])
+
         return graph
     
     def set_dataset(self, tag, nxdata):
