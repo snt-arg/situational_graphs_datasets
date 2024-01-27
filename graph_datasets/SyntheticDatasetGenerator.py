@@ -299,7 +299,7 @@ class SyntheticDatasetGenerator():
             for base_graph in self.graphs[key]:
                 filtered_graph = base_graph.filter_graph_by_node_types(node_types)
                 filtered_graph.relabel_nodes() ### TODO What to do when Im dealing with different node types? Check tutorial
-                filtered_graph = filtered_graph.filter_graph_by_edge_types([edge_type[1] for edge_type in edge_types])
+                filtered_graph = filtered_graph.filter_graph_by_edge_types([edge_type for edge_type in edge_types])
                 nx_graphs_key.append(filtered_graph)
             nx_graphs[key] = nx_graphs_key
 

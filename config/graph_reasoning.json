@@ -35,15 +35,21 @@
     "postprocess": {
         "training": {
             "use_gt": false,
-            "K_nearest": 15,
-            "K_random" : 0,
-            "node_dropout": 0.0
+            "K_nearest_max": 15,
+            "K_nearest_types" : ["ws"],
+            "K_random_max": 0,
+            "K_random_types" : ["ws"],
+            "node_dropout": 0.0,
+            "directed" : false
         },
         "final": {
             "use_gt": false,
-            "K_nearest": 15,
-            "K_random" : 0,
-            "node_dropout": 0.0
+            "K_nearest_max": 15,
+            "K_nearest_types" : ["ws"],
+            "K_random_max": 0,
+            "K_random_types" : ["ws"],
+            "node_dropout": 0.0,
+            "directed" : true
         }
     },
     "initial_features": {

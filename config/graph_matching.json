@@ -35,13 +35,13 @@
     "postprocess": {
         "training": {
             "use_gt": false,
-            "K_nearest": 15,
+            "K_nearest_max": 15,
             "K_random" : 0,
             "node_dropout": 0.0
         },
         "final": {
             "use_gt": false,
-            "K_nearest": 15,
+            "K_nearest_max": 15,
             "K_random" : 0,
             "node_dropout": 0.0
         }
