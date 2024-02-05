@@ -277,11 +277,11 @@ class SyntheticDatasetGenerator():
                             compared_room_neigh_ws_id = list(compared_room_neigh.filter_graph_by_node_attributes({"canonic_normal_index" : ij_difference_3D_oppposite}).get_nodes_ids())[0]
                             compared_room_neigh_ws_center = compared_room_neigh.get_attributes_of_node(compared_room_neigh_ws_id)["center"]
 
-                            wall_center = list(np.array(current_room_neigh_ws_center) + (np.array(compared_room_neigh_ws_center) - np.array(current_room_neigh_ws_center))/2)
+                            wall_center = np.array(np.array(current_room_neigh_ws_center) + (np.array(compared_room_neigh_ws_center) - np.array(current_room_neigh_ws_center))/2)
                             node_ID = len(graph.get_nodes_ids())
-                            graph.add_nodes([(node_ID,{"type" : "wall", "x" : wall_center, "center" : wall_center,"viz_type" : "Point", "viz_data" : wall_center[:2], "viz_feat" : 'co'})])
-                            graph.add_edges([(current_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall", "x": [], "viz_feat": "c"}),(node_ID, compared_room_neigh_ws_id, {"type": "ws_belongs_wall",\
-                                             "viz_feat": "c", "x": [], "linewidth":1.0, "alpha":0.5})])
+                            graph.add_nodes([(node_ID,{"type" : "wall", "x" : wall_center, "center" : wall_center,"viz_type" : "Point", "viz_data" : wall_center, "viz_feat" : 'co'})])
+                            graph.add_edges([(current_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall", "x": [], "viz_feat": "c", "linewidth":1.0, "alpha":0.5}),\
+                                             (compared_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall","viz_feat": "c", "x": [], "linewidth":1.0, "alpha":0.5})])
                             graph.add_edges([(current_room_neigh_ws_id, compared_room_neigh_ws_id, {"type": "ws_same_wall", "x": [], "viz_feat": "c", "linewidth":1.0, "alpha":0.5})])
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
@@ -292,7 +292,7 @@ class SyntheticDatasetGenerator():
         room_centers = [attr[1]["center"] for attr in rooms_attrs]
         floor_center = np.array(room_centers).sum(axis=0) / len(room_centers)
         floor_node_id = len(graph.get_nodes_ids())
-        graph.add_nodes([(floor_node_id,{"type" : "wall", "x" : floor_center, "center" : floor_center,\
+        graph.add_nodes([(floor_node_id,{"type" : "floor", "x" : floor_center, "center" : floor_center,\
                             "viz_type" : "Point", "viz_data" : floor_center[:2], "viz_feat" : 'oC1'})])
         for room_id in room_ids:
             graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "orange",\
