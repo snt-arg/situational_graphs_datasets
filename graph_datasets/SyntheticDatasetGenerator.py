@@ -11,17 +11,9 @@ import matplotlib.pyplot as plt
 
 import sys
 import os
-graph_wrapper_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_wrapper")
-sys.path.append(graph_wrapper_dir)
 from graph_wrapper.GraphWrapper import GraphWrapper
-graph_datasets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_datasets")
-sys.path.append(graph_datasets_dir)
 from graph_datasets.graph_visualizer import visualize_nxgraph
-graph_matching_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_matching")
-sys.path.append(graph_matching_dir)
 from graph_matching.utils import relative_positions, segments_distance
-graph_reasoning_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning")
-sys.path.append(graph_reasoning_dir)
 from graph_reasoning.from_networkxwrapper_2_heterodata import from_networkxwrapper_2_heterodata
 
 
