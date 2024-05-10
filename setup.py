@@ -2,7 +2,7 @@ from setuptools import setup
 import os
 from glob import glob
 
-package_name = 'graph_datasets'
+package_name = 'situational_graphs_datasets'
 
 setup(
     name=package_name,
