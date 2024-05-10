@@ -13,7 +13,7 @@ import sys
 import os
 from situational_graphs_wrapper.GraphWrapper import GraphWrapper
 from situational_graphs_datasets.graph_visualizer import visualize_nxgraph
-from graph_matching.utils import relative_positions, segments_distance
+from situational_graphs_reasoning.utils import relative_positions, segments_distance
 from situational_graphs_reasoning.from_networkxwrapper_2_heterodata import from_networkxwrapper_2_heterodata
 
 
