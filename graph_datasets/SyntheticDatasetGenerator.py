@@ -8,6 +8,8 @@ from sklearn.neighbors import KDTree
 from colorama import Fore, Back, Style
 import seaborn as sns
 import matplotlib.pyplot as plt
+from torch_geometric.data import Data
+import torch
 
 import sys
 import os
@@ -27,11 +29,12 @@ from graph_reasoning.from_networkxwrapper_2_heterodata import from_networkxwrapp
 
 class SyntheticDatasetGenerator():
 
-    def __init__(self, settings, logger = None, report_path = ""):
+    def __init__(self, settings, logger = None, report_path = "", dataset_name = ""):
         print(f"SyntheticDatasetGenerator:", Fore.GREEN + "Initializing" + Fore.WHITE)
         self.settings = settings
         self.logger = logger
         self.report_path = report_path
+        self.dataset_name = dataset_name
         self.define_norm_limits()
 
     def define_norm_limits(self):
@@ -172,7 +175,7 @@ class SyntheticDatasetGenerator():
                 # room_area = abs(R.from_euler("Z", room_orientation_angle, degrees= True).apply(room_area))
             geometric_info = room_center
             
-            graph.add_nodes([(node_ID,{"type" : "room","center" : room_center, "x": [], "orientation_angle": room_orientation_angle, "area" : room_area, "Geometric_info" : geometric_info,\
+            graph.add_nodes([(node_ID,{"type" : "room","center" : room_center, "x": room_center, "orientation_angle": room_orientation_angle, "area" : room_area, "Geometric_info" : geometric_info,\
                                             "viz_type" : "Point", "viz_data" : room_center[:2], "viz_feat" : 'bo'})])
         if add_multiview:
             num_multiviews = self.settings["multiview"]["number"]
@@ -311,7 +314,10 @@ class SyntheticDatasetGenerator():
             for base_graph in self.graphs[key]:
                 filtered_graph = base_graph.filter_graph_by_node_types(node_types)
                 filtered_graph.relabel_nodes() ### TODO What to do when Im dealing with different node types? Check tutorial
-                filtered_graph = filtered_graph.filter_graph_by_edge_types([edge_type for edge_type in edge_types])
+                # print(f"dbg edge_types {edge_types}")
+                filtered_graph = filtered_graph.filter_graph_by_edge_types(edge_types)
+                # visualize_nxgraph(filtered_graph, "sdfg")
+                # time.sleep(99)
                 nx_graphs_key.append(filtered_graph)
             nx_graphs[key] = nx_graphs_key
 
@@ -363,7 +369,7 @@ class SyntheticDatasetGenerator():
                     target_nodes_ids = all_target_nodes_ids[i]
                     for target_node_id in target_nodes_ids:
                         tuple_direct, tuple_inverse = (base_node_id, target_node_id), (target_node_id, base_node_id)
-                        distance = segments_distance(base_graph.get_attributes_of_node(base_node_id)["limits"],base_graph.get_attributes_of_node(target_node_id)["limits"])
+                        distance = [np.linalg.norm(base_graph.get_attributes_of_node(base_node_id)["center"] - base_graph.get_attributes_of_node(target_node_id)["center"])]
                         rel_pos_1, _ = relative_positions(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
                         def add_edge_features(feature_keys, feats):
                             if feature_keys[0] == "min_dist":
@@ -542,6 +548,59 @@ class SyntheticDatasetGenerator():
             nxdatset_key = nxdataset[key]
             hdataset_key = []
             for nxgraph in nxdatset_key:
-                hdataset_key.append(from_networkxwrapper_2_heterodata(nxgraph))
+                hdataset_key.append(nxgraph.nx_to_hetero())
             hdataset[key] = hdataset_key
         return hdataset
+
+    def save_to_files(self):
+        dataset_dir = graph_datasets_dir + f"/{self.dataset_name}"
+        if not os.path.exists(dataset_dir):
+            os.makedirs(dataset_dir)
+        for dataset_tag in self.graphs.keys():
+            dataset_tag_dir = dataset_dir + f"/{dataset_tag}"
+            if not os.path.exists(dataset_tag_dir):
+                os.makedirs(dataset_tag_dir)
+            for i, data in enumerate(self.graphs[dataset_tag]):
+                data.to_file(dataset_tag_dir + f"/{i}.pt")    
+
+    def merge_graphs_type_as_x(self, nxdatset):
+        # Initialize lists for concatenated features
+        all_x = []
+        all_edge_index = []
+        all_edge_attrs = []
+
+        # Initialize the slices dictionary
+        slices = {'x': [0], 'edge_index': [0], 'edge_attrs': [0]}
+        
+        node_offset = 0
+        edge_offset = 0
+
+        for nxgraph in nxdatset:
+            graph = nxgraph.nx_to_homo()
+            print(f"dbg homo graph {graph}")
+            # Append node features and update slices for x
+            all_x.append(graph.node_type)
+            slices['x'].append(slices['x'][-1] + graph.x.size(0))
+
+            # Append edge indices (shifted by current node offset) and update slices for edge_index
+            all_edge_index.append(graph.edge_index + node_offset)
+            slices['edge_index'].append(slices['edge_index'][-1] + graph.edge_index.size(1))
+
+            # Append edge attributes and update slices for edge_attrs
+            all_edge_attrs.append(graph.edge_type)
+            slices['edge_attrs'].append(slices['edge_attrs'][-1] + graph.edge_attr.size(0))
+
+            # Update node and edge offsets
+            node_offset += graph.x.size(0)
+            edge_offset += graph.edge_index.size(1)
+
+        # Concatenate all the individual parts
+        x = torch.cat(all_x, dim=0)
+        edge_index = torch.cat(all_edge_index, dim=1)
+        edge_attrs = torch.cat(all_edge_attrs, dim=0)
+
+        # Create a new Data object with the concatenated features
+        merged_graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attrs)
+
+        return merged_graph, slices
+
