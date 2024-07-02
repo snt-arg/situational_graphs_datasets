@@ -568,16 +568,18 @@ class SyntheticDatasetGenerator():
         all_x = []
         all_edge_index = []
         all_edge_attrs = []
+        all_y = []
+        all_idx = []
 
         # Initialize the slices dictionary
-        slices = {'x': [0], 'edge_index': [0], 'edge_attrs': [0]}
+        slices = {'x': [0], 'edge_index': [0], 'edge_attrs': [0], "y": [], "idx": []}
         
         node_offset = 0
         edge_offset = 0
 
         for nxgraph in nxdatset:
             graph = nxgraph.nx_to_homo()
-            print(f"dbg homo graph {graph}")
+
             # Append node features and update slices for x
             all_x.append(graph.node_type)
             slices['x'].append(slices['x'][-1] + graph.x.size(0))
@@ -594,13 +596,24 @@ class SyntheticDatasetGenerator():
             node_offset += graph.x.size(0)
             edge_offset += graph.edge_index.size(1)
 
+            # Update y and edx
+            all_y.append(len(all_y))
+            all_idx.append(len(all_idx))
+            slices['y'].append(len(slices['y']))
+            slices['idx'].append(len(slices['idx']))
+
+        slices['x'], slices['edge_index'], slices['edge_attrs'] = torch.Tensor(slices['x'][:-1]), torch.Tensor(slices['edge_index'][:-1]), torch.Tensor(slices['edge_attrs'][:-1])
+        slices['y'] = torch.Tensor(slices['y'])
+        slices['idx'] = torch.Tensor(slices['idx'])
+        
         # Concatenate all the individual parts
         x = torch.cat(all_x, dim=0)
         edge_index = torch.cat(all_edge_index, dim=1)
         edge_attrs = torch.cat(all_edge_attrs, dim=0)
+        y = torch.Tensor(all_y)
+        idx = torch.Tensor(all_idx)
 
         # Create a new Data object with the concatenated features
-        merged_graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attrs)
+        merged_graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attrs, y = y, idx = idx)
 
         return merged_graph, slices
-

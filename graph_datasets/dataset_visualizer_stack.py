@@ -18,7 +18,7 @@ filtered_nxdataset = dataset_generator.get_filtered_datset(settings_hdata["nodes
 # normalized_nxdatset = dataset_generator.normalize_features_nxdatset(extended_nxdatset)
 merged_graph, slices = dataset_generator.merge_graphs_type_as_x(filtered_nxdataset)
 print(f"dbg merged_graph x {merged_graph.x}")
-print(f"dbg merged_graph edge_attrs {merged_graph.edge_attr}")
+print(f"dbg merged_graph edge_attrs {merged_graph}")
 print(f"dbg slices {slices}")
 # view1 = dataset_generator.graphs["views"][0].filter_graph_by_node_attributes_containted({"view" : 1})
 # view2 = dataset_generator.graphs["views"][0].filter_graph_by_node_attributes_containted({"view" : 2})
