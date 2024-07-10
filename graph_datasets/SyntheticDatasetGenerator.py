@@ -9,6 +9,7 @@ from colorama import Fore, Back, Style
 import seaborn as sns
 import matplotlib.pyplot as plt
 from torch_geometric.data import Data
+from torch_geometric.utils import to_undirected, is_undirected
 import torch
 
 import sys
@@ -24,7 +25,6 @@ sys.path.append(graph_matching_dir)
 from graph_matching.utils import relative_positions, segments_distance
 graph_reasoning_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning")
 sys.path.append(graph_reasoning_dir)
-from graph_reasoning.from_networkxwrapper_2_heterodata import from_networkxwrapper_2_heterodata
 
 
 class SyntheticDatasetGenerator():
@@ -572,12 +572,13 @@ class SyntheticDatasetGenerator():
         all_idx = []
 
         # Initialize the slices dictionary
-        slices = {'x': [0], 'edge_index': [0], 'edge_attrs': [0], "y": [], "idx": []}
+        slices = {'x': [0], 'edge_index': [0], 'edge_attr': [0], "y": [], "idx": []}
         
         node_offset = 0
         edge_offset = 0
 
         for nxgraph in nxdatset:
+            # nxgraph.to_undirected()
             graph = nxgraph.nx_to_homo()
 
             # Append node features and update slices for x
@@ -585,26 +586,34 @@ class SyntheticDatasetGenerator():
             slices['x'].append(slices['x'][-1] + graph.x.size(0))
 
             # Append edge indices (shifted by current node offset) and update slices for edge_index
-            all_edge_index.append(graph.edge_index + node_offset)
-            slices['edge_index'].append(slices['edge_index'][-1] + graph.edge_index.size(1))
+            # all_edge_index.append(graph.edge_index + node_offset)
+            inverse_edge_index = torch.Tensor(np.array([graph.edge_index[1],graph.edge_index[0]])).int()
+            all_edge_index.append(graph.edge_index)
+            all_edge_index.append(inverse_edge_index)
+            slices['edge_index'].append(slices['edge_index'][-1] + graph.edge_index.size(1)*2)
 
             # Append edge attributes and update slices for edge_attrs
             all_edge_attrs.append(graph.edge_type)
-            slices['edge_attrs'].append(slices['edge_attrs'][-1] + graph.edge_attr.size(0))
+            all_edge_attrs.append(graph.edge_type)
+            slices['edge_attr'].append(slices['edge_attr'][-1] + graph.edge_attr.size(0)*2)
 
             # Update node and edge offsets
             node_offset += graph.x.size(0)
             edge_offset += graph.edge_index.size(1)
 
             # Update y and edx
-            all_y.append(len(all_y))
+            all_y.append(0.)
             all_idx.append(len(all_idx))
             slices['y'].append(len(slices['y']))
             slices['idx'].append(len(slices['idx']))
 
-        slices['x'], slices['edge_index'], slices['edge_attrs'] = torch.Tensor(slices['x'][:-1]), torch.Tensor(slices['edge_index'][:-1]), torch.Tensor(slices['edge_attrs'][:-1])
-        slices['y'] = torch.Tensor(slices['y'])
-        slices['idx'] = torch.Tensor(slices['idx'])
+        
+
+        slices['x'], slices['edge_index'], slices['edge_attr'] = torch.Tensor(slices['x']).int(), torch.Tensor(slices['edge_index']).int(), torch.Tensor(slices['edge_attr']).int()
+        slices['y'].append(len(slices['y']))
+        slices['y'] = torch.Tensor(slices['y']).int() 
+        slices['idx'].append(len(slices['idx']))
+        slices['idx'] = torch.Tensor(slices['idx']).int()
         
         # Concatenate all the individual parts
         x = torch.cat(all_x, dim=0)
@@ -615,5 +624,9 @@ class SyntheticDatasetGenerator():
 
         # Create a new Data object with the concatenated features
         merged_graph = Data(x=x, edge_index=edge_index, edge_attr=edge_attrs, y = y, idx = idx)
+        # print(f"dbg len(merged_graph.edge_index) {merged_graph.edge_index[:, -10:]}")
+        # merged_graph.edge_index = to_undirected(merged_graph.edge_index)
+        # print(f"dbg len(merged_graph.edge_index) {merged_graph.edge_index[:, -10:]}")
+        # asdf
 
         return merged_graph, slices
