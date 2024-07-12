@@ -1,4 +1,5 @@
 from setuptools import setup
+from setuptools import setup, find_packages
 import os
 from glob import glob
 
@@ -7,9 +8,10 @@ package_name = 'graph_datasets'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=[package_name],
+    packages=find_packages(where='src'),
+    package_dir={'': 'src'},
     package_data={
-        package_name + '.config': ['*.json'],
+        'graph_datasets': ['config/*.json'],
     },
     data_files=[
         ('share/ament_index/resource_index/packages',
