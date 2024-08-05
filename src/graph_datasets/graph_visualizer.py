@@ -13,6 +13,7 @@ def visualize_nxgraph(graph, image_name):
         elif node_data[1]["viz_type"] == "Line":
             viz_data = np.array(node_data[1]["viz_data"])
             linewidth = node_data[1]["linewidth"] if "linewidth" in node_data[1].keys() else 1.5
+            
             plt.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz_feat"], linewidth=linewidth)
 
             norm_line = np.stack([node_data[1]["center"], node_data[1]["center"] + node_data[1]["normal"]/4])

@@ -28,8 +28,6 @@ from graph_matching.utils import relative_positions, segments_distance
 # sys.path.append(graph_reasoning_dir)
 
 
-
-
 class SyntheticDatasetGenerator():
 
     def __init__(self, settings, logger = None, report_path = "", dataset_name = ""):
@@ -309,7 +307,7 @@ class SyntheticDatasetGenerator():
     def set_dataset(self, tag, nxdata):
         self.graphs[tag] = nxdata
     
-    def get_filtered_datset(self, node_types, edge_types):
+    def get_filtered_datset(self, node_types, full_edge_types):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Filtering Dataset" + Fore.WHITE)
         nx_graphs = {}
         for key in self.graphs.keys():
@@ -318,8 +316,11 @@ class SyntheticDatasetGenerator():
                 filtered_graph = base_graph.filter_graph_by_node_types(node_types)
                 filtered_graph.relabel_nodes() ### TODO What to do when Im dealing with different node types? Check tutorial
                 # print(f"dbg edge_types {edge_types}")
-                filtered_graph = filtered_graph.filter_graph_by_edge_types(edge_types)
+                specific_edge_types = [e[1] for e in full_edge_types]
+                # print(f"dbg specific_edge_types {specific_edge_types}")
+                filtered_graph = filtered_graph.filter_graph_by_edge_types(specific_edge_types)
                 # visualize_nxgraph(filtered_graph, "sdfg")
+                # plt.show()
                 # time.sleep(99)
                 nx_graphs_key.append(filtered_graph)
             nx_graphs[key] = nx_graphs_key
@@ -327,7 +328,7 @@ class SyntheticDatasetGenerator():
         return nx_graphs
     
 
-    def extend_nxdataset(self, nxdataset, new_edge_types, stage):
+    def extend_nxdataset(self, nxdataset, new_edge_type, stage):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
         new_nxdataset = []
 
@@ -340,9 +341,22 @@ class SyntheticDatasetGenerator():
             base_graph.unfreeze()
             
             ### Set positive label
+            possible_edge_types = sorted(list(base_graph.get_all_edge_types()))
             if settings["use_gt"]:
-                for edge_id in list(base_graph.get_edges_ids()):
-                    base_graph.update_edge_attrs(edge_id, {"label":1, "viz_feat" : 'green'})
+                for source_node_id, target_node_id,  edge_attrs in base_graph.get_attributes_of_all_edges():
+                    edge_id = (source_node_id, target_node_id)
+                    distance = [np.linalg.norm(base_graph.get_attributes_of_node(source_node_id)["center"] - base_graph.get_attributes_of_node(target_node_id)["center"])]
+                    rel_pos_1, _ = relative_positions(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
+                    def add_edge_features(feature_keys, feats):
+                        if feature_keys[0] == "min_dist":
+                            feats = np.concatenate([feats, distance]).astype(np.float32)  #, np.log(distance+1)]).astype(np.float32)
+                        elif feature_keys[0] == "relative_pos":
+                            feats = np.concatenate([feats, rel_pos_1[:2]]).astype(np.float32)
+                        if len(feature_keys) > 1:
+                            feats = add_edge_features(feature_keys[1:], feats)
+                        return feats
+                    x = add_edge_features(self.settings["initial_features"]["edge"], [])
+                    base_graph.update_edge_attrs(edge_id, {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})
             else:
                 base_graph.remove_all_edges()
             base_graph.to_directed()
@@ -385,16 +399,16 @@ class SyntheticDatasetGenerator():
                         x = add_edge_features(self.settings["initial_features"]["edge"], [])
                         if tuple_direct in positive_gt_edge_ids or tuple_inverse in positive_gt_edge_ids:
                             if not settings["use_gt"]:
-                                new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 1, "x":x, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
-                                # new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 1, "x":x_2, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
+                                new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 1, "x":x, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
+                                # new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 1, "x":x_2, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
                                 counter += 1
-                            else:
-                                new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
-                                counter += 1
+                            # else:
+                            #     new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                            #     counter += 1
                         else:
-                            new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                            new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
                             counter += 1
-                            # new_edges.append((target_node_id, base_node_id,{"type": new_edge_types, "label": 0, "x":x_2, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                            # new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x_2, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
                 base_graph.unfreeze()
                 base_graph.add_edges(new_edges)                
 
@@ -413,7 +427,7 @@ class SyntheticDatasetGenerator():
                         tuple_inverse = (tuple_direct[1], tuple_direct[0])
                         if tuple_direct not in list(base_graph.get_edges_ids()) and tuple_inverse not in list(base_graph.get_edges_ids()):
                             ### TODO Include X
-                            new_edges.append((tuple_direct[0], tuple_direct[1],{"type": new_edge_types, "label": 0, "viz_feat" : 'blue', "linewidth":1.0, "alpha":0.5}))
+                            new_edges.append((tuple_direct[0], tuple_direct[1],{"type": new_edge_type, "label": 0, "viz_feat" : 'blue', "linewidth":1.0, "alpha":0.5}))
 
                 base_graph.unfreeze()
                 base_graph.add_edges(new_edges)
@@ -490,7 +504,7 @@ class SyntheticDatasetGenerator():
         if generate_x_plots:
             self.plot_input_histograms(x_history)
         return normalized_nxdatset
-    
+
 
     def plot_input_histograms(self, x_history):
         # set a grey background (use sns.set_theme() if seaborn version 0.11.0 or above) 
