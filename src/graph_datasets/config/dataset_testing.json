@@ -40,7 +40,8 @@
             "K_random_max": 0,
             "K_random_types" : ["ws", "room"],
             "node_dropout": 0.0,
-            "directed" : false
+            "directed" : false,
+            "room_merge_ratio" : 0.1
         },
         "final": {
             "use_gt": false,

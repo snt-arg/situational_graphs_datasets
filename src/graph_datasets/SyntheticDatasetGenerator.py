@@ -23,7 +23,7 @@ from graph_wrapper.GraphWrapper import GraphWrapper
 from graph_datasets.graph_visualizer import visualize_nxgraph
 # graph_matching_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_matching")
 # sys.path.append(graph_matching_dir)
-from graph_matching.utils import relative_positions, segments_distance
+from graph_matching.utils import relative_positions, segments_distance, closest_point_on_segment, distance_between_points
 # graph_reasoning_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning")
 # sys.path.append(graph_reasoning_dir)
 
@@ -289,6 +289,79 @@ class SyntheticDatasetGenerator():
                             graph.add_edges([(current_room_neigh_ws_id, compared_room_neigh_ws_id, {"type": "ws_same_wall", "x": [], "viz_feat": "c", "linewidth":1.0, "alpha":0.5})])
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
+
+
+        ### Room merge
+        node_ids_to_remove = []
+
+        if self.settings["postprocess"]["training"]["room_merge_ratio"] > 0:
+            wall_nodes_ids = copy.deepcopy(graph).filter_graph_by_node_types("wall").get_nodes_ids()
+            for wall_node_id in wall_nodes_ids:
+                if np.random.random_sample() < self.settings["postprocess"]["training"]["room_merge_ratio"]:
+                    ws_nodes_ids = copy.deepcopy(graph).get_neighbourhood_graph(wall_node_id).filter_graph_by_node_types("ws").get_nodes_ids()
+                    room_nodes_ids = []
+                    rooms_ws_nodes_ids = []
+                    for ws_node_id in ws_nodes_ids:
+                        room_nodes_ids.append(list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("room").get_nodes_ids())[0])
+                        rooms_ws_nodes_ids.append(list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[-1]).filter_graph_by_node_types("ws").get_nodes_ids()))
+
+                    for i, ws_node_id in enumerate(ws_nodes_ids):
+                        related_walls = list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())
+                        if len(related_walls) == 1:
+                            node_ids_to_remove.append(ws_node_id)
+                        else:
+                            related_walls.remove(wall_node_id)
+                            neigh_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(related_walls[0]).filter_graph_by_node_types("ws").get_nodes_ids()).remove(ws_node_id)
+                            ws_node_attrs = graph.get_attributes_of_node(ws_node_id)
+                            other_room_ws_centers = [graph.get_attributes_of_node(node_id)["center"] for node_id in rooms_ws_nodes_ids[1-i]]
+                            print(f"dbg len(other_room_ws_centers) {len(other_room_ws_centers)}")
+                            other_room_ws_closest_points = [closest_point_on_segment(center, ws_node_attrs["limits"][0], ws_node_attrs["limits"][1]) for center in other_room_ws_centers]
+                            distances = [[distance_between_points(point, ws_node_attrs["limits"][0]),distance_between_points(point, ws_node_attrs["limits"][1])] for point in other_room_ws_closest_points]
+                            distances = np.array(distances)
+                            print(f"dbg distances {distances}")
+                            min_row, min_col = np.unravel_index(np.argmin(distances), distances.shape)
+                            min_dist_idx = np.argmin(distances[:,1-min_col])
+                            print(f"dbg row, col {min_row, min_col}")
+                            print(f"dbg min_dist_idx {min_dist_idx}")
+                            print(f"dbg ws_node_attrs[limits] {ws_node_attrs['limits']}")
+                            print(f"dbg other_room_ws_closest_points {other_room_ws_closest_points}")
+                            ws_node_attrs["limits"][min_col] = other_room_ws_closest_points[min_dist_idx]
+                            ws_node_attrs["viz_data"][min_col] = other_room_ws_closest_points[min_dist_idx][:2]
+                            ws_node_attrs["center"] = (ws_node_attrs["limits"][0] + ws_node_attrs["limits"][1]) / 2
+
+                            print(f"dbg ws_node_attrs[limits] {ws_node_attrs['limits']}")
+                            # asdf
+
+
+                    random.shuffle(room_nodes_ids)
+                    node_ids_to_remove.append(room_nodes_ids[1])
+                    node_ids_to_remove.append(wall_node_id)
+                    room1_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[0]).filter_graph_by_node_types("ws").get_nodes_ids())
+                    room2_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[1]).filter_graph_by_node_types("ws").get_nodes_ids())
+
+                    for node_id in room2_ws_nodes_ids:
+                        attrs = graph.get_attributes_of_edge((node_id, room_nodes_ids[1]))
+                        graph.add_edges([(node_id, room_nodes_ids[0], attrs)])
+                    
+                    ws_centers = [[graph.get_attributes_of_node(node_id)["center"]] for node_id in room1_ws_nodes_ids + room2_ws_nodes_ids]
+                    ws_centers = np.concatenate(ws_centers, axis=0)
+                    room_center = np.mean(ws_centers, axis=0)
+                    room1_attrs = graph.get_attributes_of_node(room_nodes_ids[0])
+
+                    room1_attrs["center"] = room_center
+                    room1_attrs["x"] = room_center
+                    room1_attrs["viz_data"] = room_center[:2]
+                    graph.update_node_attrs(room_nodes_ids[0], room1_attrs)
+
+                    combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
+                    for combination in combinations:
+                        graph.add_edges([(combination[0], combination[1], {"type": "ws_same_room", "x":x, "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
+
+        graph.remove_nodes(node_ids_to_remove)
+            
+        visualize_nxgraph(graph, image_name = "test")
+        plt.show()
+        # time.sleep(999)
 
         ### Floors
         rooms_attrs = graph.filter_graph_by_node_attributes({"type" : "room"}).get_attributes_of_all_nodes()
