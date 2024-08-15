@@ -6,7 +6,7 @@
         "min_room_entry_size" : [10,10],
         "room_center_distances" : [0.1,0.1],
         "wall_thickness" : [0.05,0.15],
-        "n_buildings" : 11
+        "n_buildings" : 110
     },
     "noise":{
         "global":{
@@ -36,11 +36,12 @@
         "training": {
             "use_gt": true,
             "K_nearest_max": 15,
-            "K_nearest_types" : ["ws"],
+            "K_nearest_types" : ["ws", "room"],
             "K_random_max": 0,
-            "K_random_types" : ["ws"],
+            "K_random_types" : ["ws", "room"],
             "node_dropout": 0.0,
-            "directed" : false
+            "directed" : false,
+            "room_merge_ratio" : 0.1
         },
         "final": {
             "use_gt": false,
