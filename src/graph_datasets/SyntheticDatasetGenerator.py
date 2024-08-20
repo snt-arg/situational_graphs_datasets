@@ -294,6 +294,8 @@ class SyntheticDatasetGenerator():
         ### Room merge
         if self.settings["postprocess"]["training"]["room_merge_ratio"] > 0:
             wall_nodes_ids = copy.deepcopy(graph).filter_graph_by_node_types("wall").get_nodes_ids()
+            
+
             for wall_node_id in wall_nodes_ids:
                 if np.random.random_sample() < self.settings["postprocess"]["training"]["room_merge_ratio"]:
                     node_ids_to_remove = []
@@ -304,6 +306,16 @@ class SyntheticDatasetGenerator():
                         room_nodes_ids.append(list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("room").get_nodes_ids())[0])
                         rooms_ws_nodes_ids.append(list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[-1]).filter_graph_by_node_types("ws").get_nodes_ids()))
 
+                    num_related_walls = []
+                    for i, ws_node_id in enumerate(ws_nodes_ids):
+                        num_related_walls.append(len(list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())))
+                    num_related_ws = [len(i) for i in rooms_ws_nodes_ids]
+                    print(f"dbg num_related_ws {num_related_ws == 4}")
+                    elegibility_condition = (num_related_walls == [1,2] or num_related_walls == [2,1]) and num_related_ws == [4,4]
+
+                    if not(elegibility_condition):
+                        break
+                    
                     for i, ws_node_id in enumerate(ws_nodes_ids):
                         related_walls = list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())
                         if len(related_walls) == 1:

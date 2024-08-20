@@ -6,7 +6,7 @@
         "min_room_entry_size" : [10,10],
         "room_center_distances" : [0.1,0.1],
         "wall_thickness" : [0.05,0.15],
-        "n_buildings" : 8
+        "n_buildings" : 50
     },
     "noise":{
         "global":{
@@ -41,7 +41,7 @@
             "K_random_types" : ["ws", "room"],
             "node_dropout": 0.0,
             "directed" : false,
-            "room_merge_ratio" : 0.1
+            "room_merge_ratio" : 1.0
         },
         "final": {
             "use_gt": false,
