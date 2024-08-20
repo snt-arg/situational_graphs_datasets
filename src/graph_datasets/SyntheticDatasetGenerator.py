@@ -310,7 +310,6 @@ class SyntheticDatasetGenerator():
                     for i, ws_node_id in enumerate(ws_nodes_ids):
                         num_related_walls.append(len(list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())))
                     num_related_ws = [len(i) for i in rooms_ws_nodes_ids]
-                    print(f"dbg num_related_ws {num_related_ws == 4}")
                     elegibility_condition = (num_related_walls == [1,2] or num_related_walls == [2,1]) and num_related_ws == [4,4]
 
                     if not(elegibility_condition):
@@ -333,6 +332,8 @@ class SyntheticDatasetGenerator():
                             ws_node_attrs["limits"][min_col] = np.array(other_room_ws_closest_points[min_dist_idx])
                             ws_node_attrs["viz_data"][min_col] = np.array(other_room_ws_closest_points[min_dist_idx][:2])
                             ws_node_attrs["center"] = (np.array(ws_node_attrs["limits"][0]) + np.array(ws_node_attrs["limits"][1])) / 2
+                            ws_length = np.linalg.norm(ws_node_attrs["limits"][0] - ws_node_attrs["limits"][1])
+                            ws_node_attrs["x"] = np.concatenate([[ws_length], ws_node_attrs["normal"][:2]], axis=0)
 
                             ### update shortened ws' wall's center
                             related_walls.remove(wall_node_id)
@@ -366,7 +367,8 @@ class SyntheticDatasetGenerator():
                             ws0_attrs["limits"] = list(new_limits)
                             ws0_attrs["viz_data"] = list(new_limits)
                             ws0_attrs["center"] = new_center
-                            
+                            ws0_length = np.linalg.norm(ws0_attrs["limits"][0] - ws0_attrs["limits"][1])
+                            ws0_attrs["x"] = np.concatenate([[ws0_length], ws0_attrs["normal"][:2]], axis=0) ### TODO use add_ws_node_features(self.settings["initial_features"]["ws_node"], [])
 
                             node_ids_to_remove.append(combinations[true_index][1])
                             ws0_walls_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(combinations[true_index][0]).filter_graph_by_node_types("wall").get_nodes_ids())
