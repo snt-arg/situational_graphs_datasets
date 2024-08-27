@@ -295,7 +295,6 @@ class SyntheticDatasetGenerator():
         if self.settings["postprocess"]["training"]["room_merge_ratio"] > 0:
             wall_nodes_ids = copy.deepcopy(graph).filter_graph_by_node_types("wall").get_nodes_ids()
             
-
             for wall_node_id in wall_nodes_ids:
                 if np.random.random_sample() < self.settings["postprocess"]["training"]["room_merge_ratio"]:
                     node_ids_to_remove = []
@@ -359,7 +358,7 @@ class SyntheticDatasetGenerator():
                         ws1_attrs_limits = graph.get_attributes_of_node(combinations[true_index][1])["limits"]
                         candidates_limits = list(itertools.product(ws0_attrs_limits, ws1_attrs_limits))
                         distances = [distance_between_points(points[0], points[1]) for points in candidates_limits]
-                        if min(distances) < wall_thickness*4:
+                        if min(distances) < wall_thickness*2:
                             new_limits = candidates_limits[np.argmax(distances)]
                             new_center = (new_limits[0] + new_limits[1]) / 2
 
