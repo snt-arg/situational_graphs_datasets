@@ -383,7 +383,6 @@ class SyntheticDatasetGenerator():
                                 neigh_wall_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(related_wall).filter_graph_by_node_types("ws").get_nodes_ids())
                                 if combinations[true_index][0] in neigh_wall_ws: neigh_wall_ws.remove(combinations[true_index][0])
                                 if combinations[true_index][1] in neigh_wall_ws: neigh_wall_ws.remove(combinations[true_index][1])
-                                if combinations[true_index][1] in neigh_wall_ws: neigh_wall_ws.remove(combinations[true_index][1])
                                 if neigh_wall_ws:
                                     new_wall_center = (np.array(graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(new_center)) / 2
                                     wall_attrs = graph.get_attributes_of_node(related_wall)
