@@ -290,7 +290,8 @@ class SyntheticDatasetGenerator():
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
 
-
+        # visualize_nxgraph(graph, image_name = "test 1")
+        # plt.show()
         ### Room merge
         if self.settings["postprocess"]["training"]["room_merge_ratio"] > 0:
             wall_nodes_ids = copy.deepcopy(graph).filter_graph_by_node_types("wall").get_nodes_ids()
@@ -328,11 +329,11 @@ class SyntheticDatasetGenerator():
                             distances = np.array(distances)
                             _, min_col = np.unravel_index(np.argmin(distances), distances.shape)
                             min_dist_idx = np.argmin(distances[:,1-min_col])
-                            ws_node_attrs["limits"][min_col] = np.array(other_room_ws_closest_points[min_dist_idx])
-                            ws_node_attrs["viz_data"][min_col] = np.array(other_room_ws_closest_points[min_dist_idx][:2])
-                            ws_node_attrs["center"] = (np.array(ws_node_attrs["limits"][0]) + np.array(ws_node_attrs["limits"][1])) / 2
+                            ws_node_attrs["limits"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
+                            ws_node_attrs["viz_data"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx][:2]))
+                            ws_node_attrs["center"] = copy.deepcopy((np.array(ws_node_attrs["limits"][0]) + np.array(ws_node_attrs["limits"][1])) / 2)
                             ws_length = np.linalg.norm(ws_node_attrs["limits"][0] - ws_node_attrs["limits"][1])
-                            ws_node_attrs["x"] = np.concatenate([[ws_length], ws_node_attrs["normal"][:2]], axis=0)
+                            ws_node_attrs["x"] = copy.deepcopy(np.concatenate([[ws_length], ws_node_attrs["normal"][:2]], axis=0))
 
                             ### update shortened ws' wall's center
                             related_walls.remove(wall_node_id)
@@ -345,20 +346,24 @@ class SyntheticDatasetGenerator():
                                 wall_attrs["viz_data"] = new_wall_center
                                 wall_attrs["x"] = new_wall_center
 
-
                     ### merge same plane ws
                     random.shuffle(room_nodes_ids)
                     room1_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[0]).filter_graph_by_node_types("ws").get_nodes_ids())
                     room2_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[1]).filter_graph_by_node_types("ws").get_nodes_ids())
                     combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
                     collinearity = [are_segments_collinear(graph.get_attributes_of_node(combination[0])["limits"], graph.get_attributes_of_node(combination[1])["limits"]) for combination in combinations]
+                    print(f"dbg collinearity {sum(collinearity)}")
                     true_indices = [index for index, value in enumerate(collinearity) if value]
                     for true_index in true_indices:
+                        if len(set(combinations[true_index]).intersection(set(node_ids_to_remove))) != 0:
+                            break
+                        # visualize_nxgraph(graph, image_name = f"test 2 {true_index}")
                         ws0_attrs_limits = graph.get_attributes_of_node(combinations[true_index][0])["limits"]
                         ws1_attrs_limits = graph.get_attributes_of_node(combinations[true_index][1])["limits"]
                         candidates_limits = list(itertools.product(ws0_attrs_limits, ws1_attrs_limits))
                         distances = [distance_between_points(points[0], points[1]) for points in candidates_limits]
-                        if min(distances) < wall_thickness*2:
+                        # if min(distances) < wall_thickness*2:
+                        if True:
                             new_limits = candidates_limits[np.argmax(distances)]
                             new_center = (new_limits[0] + new_limits[1]) / 2
 
@@ -383,6 +388,7 @@ class SyntheticDatasetGenerator():
                                 neigh_wall_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(related_wall).filter_graph_by_node_types("ws").get_nodes_ids())
                                 if combinations[true_index][0] in neigh_wall_ws: neigh_wall_ws.remove(combinations[true_index][0])
                                 if combinations[true_index][1] in neigh_wall_ws: neigh_wall_ws.remove(combinations[true_index][1])
+
                                 if neigh_wall_ws:
                                     new_wall_center = (np.array(graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(new_center)) / 2
                                     wall_attrs = graph.get_attributes_of_node(related_wall)
@@ -417,8 +423,8 @@ class SyntheticDatasetGenerator():
 
                     graph.remove_nodes(node_ids_to_remove)
             
-        # visualize_nxgraph(graph, image_name = "test")
-        # plt.show()
+        visualize_nxgraph(graph, image_name = "test 3")
+        plt.show()
         # time.sleep(999)
 
         ### Floors
