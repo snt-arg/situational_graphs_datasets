@@ -24,6 +24,6 @@ extended_nxdatset = dataset_generator.extend_nxdataset(filtered_nxdataset, "trai
 # visualize_nxgraph(view2, "with views 2")
 # visualize_nxgraph(view3, "with views 3")
 
-for graph in filtered_nxdataset:
+for graph in extended_nxdatset["train"]:
     visualize_nxgraph(graph, "train data")
     plt.show()

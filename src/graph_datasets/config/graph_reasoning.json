@@ -1,12 +1,12 @@
 {   
     "base_graphs": {
-        "grid_dims" : [[70,70],[70,70]],
-        "playground_size": [100, 100],
+        "grid_dims" : [[25,70],[25,70]],
+        "playground_size": [60, 100],
         "max_room_entry_size" : [60,60],
         "min_room_entry_size" : [10,10],
         "room_center_distances" : [0.1,0.1],
         "wall_thickness" : [0.05,0.15],
-        "n_buildings" : 200
+        "n_buildings" : 500
     },
     "noise":{
         "global":{
@@ -15,12 +15,12 @@
             "rotation": 1.0
         },
         "room": {
-            "active": true,
+            "active": false,
             "translation": 0.01,
             "rotation": 0.003
         },
         "ws": {
-            "active": true,
+            "active": false,
             "rotation": 0.005
         }
     },
@@ -39,7 +39,7 @@
             "K_nearest_types" : ["ws", "room"],
             "K_random_max": 0,
             "K_random_types" : ["ws", "room"],
-            "node_dropout": 0.0,
+            "ws_dropout": 0.15,
             "directed" : false,
             "room_merge_ratio" : 0.5
         },
@@ -49,7 +49,7 @@
             "K_nearest_types" : ["ws"],
             "K_random_max": 0,
             "K_random_types" : ["ws"],
-            "node_dropout": 0.0,
+            "ws_dropout": 0.0,
             "directed" : true
         }
     },
@@ -58,3 +58,4 @@
         "edge" : ["min_dist", "relative_pos"]
     }
 }
+

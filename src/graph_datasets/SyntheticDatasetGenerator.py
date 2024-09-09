@@ -158,7 +158,7 @@ class SyntheticDatasetGenerator():
             occurrencies = np.argwhere(np.where(base_matrix == base_matrix_room_id, True, False))
             limits = [occurrencies[0],occurrencies[-1]]
             room_entry_size = [limits[1][0] - limits[0][0] + 1, limits[1][1] - limits[0][1] + 1]
-            node_ID = len(graph.get_nodes_ids())
+            node_ID = max(graph.get_nodes_ids(), default=-1) + 1
             room_center = np.array([room_center_distances[0]*(limits[0][0] + (room_entry_size[0]-1)/2), room_center_distances[1]*(limits[0][1]+(room_entry_size[1]-1)/2), 0])
             room_orientation_angle = 0.0
             room_area = [room_center_distances[0]*room_entry_size[0] - wall_thickness, room_center_distances[1]*room_entry_size[1] - wall_thickness, 0]
@@ -207,7 +207,7 @@ class SyntheticDatasetGenerator():
                 normals = np.array([list(R.from_euler("Z", node_data[1]["orientation_angle"] + per_ws_noise_rot_angle[j], degrees= True).apply(normals[j])) for j in range(4)])
                 
             for i in range(4):
-                node_ID = len(graph.get_nodes_ids())
+                node_ID = max(graph.get_nodes_ids(), default=-1) + 1
                 orthogonal_normal = R.from_euler("Z", 90, degrees= True).apply(copy.deepcopy(normals[i]))
                 orthogonal_canonic_normal = R.from_euler("Z", 90, degrees= True).apply(copy.deepcopy(canonic_normals[i]))
                 ws_normal = np.array([-1,-1, 0])*normals[i]
@@ -282,7 +282,7 @@ class SyntheticDatasetGenerator():
                             compared_room_neigh_ws_center = compared_room_neigh.get_attributes_of_node(compared_room_neigh_ws_id)["center"]
 
                             wall_center = np.array(np.array(current_room_neigh_ws_center) + (np.array(compared_room_neigh_ws_center) - np.array(current_room_neigh_ws_center))/2)
-                            node_ID = len(graph.get_nodes_ids())
+                            node_ID = max(graph.get_nodes_ids(), default=-1) + 1
                             graph.add_nodes([(node_ID,{"type" : "wall", "x" : wall_center, "center" : wall_center,"viz_type" : "Point", "viz_data" : wall_center, "viz_feat" : 'co'})])
                             graph.add_edges([(current_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall", "x": [], "viz_feat": "c", "linewidth":1.0, "alpha":0.5}),\
                                              (compared_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall","viz_feat": "c", "x": [], "linewidth":1.0, "alpha":0.5})])
@@ -430,7 +430,7 @@ class SyntheticDatasetGenerator():
         room_ids = [attr[0] for attr in rooms_attrs]
         room_centers = [attr[1]["center"] for attr in rooms_attrs]
         floor_center = np.array(room_centers).sum(axis=0) / len(room_centers)
-        floor_node_id = len(graph.get_nodes_ids())
+        floor_node_id = max(graph.get_nodes_ids(), default=-1) + 1
         graph.add_nodes([(floor_node_id,{"type" : "floor", "x" : floor_center, "center" : floor_center,\
                             "viz_type" : "Point", "viz_data" : floor_center[:2], "viz_feat" : 'oC1'})])
         for room_id in room_ids:
@@ -467,8 +467,8 @@ class SyntheticDatasetGenerator():
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
         new_nxdataset = []
 
-        # for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
-        for i in range(len(nxdataset)):
+        for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
+        # for i in range(len(nxdataset)):
             nxdata = nxdataset[i]
             base_graph = copy.deepcopy(nxdata)
             positive_gt_edge_ids = list(base_graph.get_edges_ids())
@@ -496,12 +496,12 @@ class SyntheticDatasetGenerator():
                 base_graph.remove_all_edges()
             base_graph.to_directed()
                 
-            ### NODE DROPOUT
-            if settings["node_dropout"] > 0.:
-                node_ids = list(base_graph.get_nodes_ids())
+            ### ws dropout
+            if settings["ws_dropout"] > 0.:
+                node_ids = list(base_graph.filter_graph_by_node_types(["ws"]).get_nodes_ids())
                 node_ids_selected = []
                 for node_id in node_ids:
-                    if np.random.random_sample() < settings["node_dropout"]:
+                    if np.random.random_sample() < settings["ws_dropout"]:
                         node_ids_selected.append(node_id)
                 base_graph.remove_nodes(node_ids_selected)
 
