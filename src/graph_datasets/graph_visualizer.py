@@ -4,7 +4,7 @@ import numpy as np
 
 def visualize_nxgraph(graph, image_name):
     nodes_data = graph.get_attributes_of_all_nodes()
-    plt.figure(image_name)
+    fig = plt.figure(image_name)
     plt.clf()
     for node_data in nodes_data:
         if node_data[1]["viz_type"] == "Point":
@@ -33,6 +33,8 @@ def visualize_nxgraph(graph, image_name):
     # plt.xlim([-3, 23])
     # plt.ylim([-3, 23])
 
-    plt.draw()
-    plt.pause(0.001)
+    # plt.draw()
+    # plt.pause(0.001)
     # plt.show()
+    plt.close(fig)
+    return fig
