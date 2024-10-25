@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def visualize_nxgraph(graph, image_name):
+def visualize_nxgraph(graph, image_name, visualize_alone=False):
     nodes_data = graph.get_attributes_of_all_nodes()
     fig = plt.figure(image_name)
     plt.clf()
@@ -36,5 +36,11 @@ def visualize_nxgraph(graph, image_name):
     # plt.draw()
     # plt.pause(0.001)
     # plt.show()
-    plt.close(fig)
+    if visualize_alone:
+        plt.draw()
+        plt.pause(0.001)
+        # plt.show()
+
+    else:
+        plt.close(fig)
     return fig

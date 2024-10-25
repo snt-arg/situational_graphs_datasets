@@ -9,7 +9,6 @@ from colorama import Fore, Back, Style
 import seaborn as sns
 import matplotlib.pyplot as plt
 from torch_geometric.data import Data
-from torch_geometric.utils import to_undirected, is_undirected
 import torch
 
 import sys
@@ -149,7 +148,6 @@ class SyntheticDatasetGenerator():
 
     def generate_graph_from_base_matrix(self, base_matrix, add_noise = False, add_multiview = False):
         graph = GraphWrapper()
-        graph.to_undirected()
         room_center_distances = self.settings["base_graphs"]["room_center_distances"]
         wall_thickness = np.random.uniform(self.settings["base_graphs"]["wall_thickness"][0], self.settings["base_graphs"]["wall_thickness"][1])
 
@@ -241,7 +239,7 @@ class SyntheticDatasetGenerator():
                                            "viz_type" : "Line", "viz_data" : [ws_limit_1[:2],ws_limit_2[:2]], "viz_feat" : color_map[i],\
                                            "canonic_normal_index" : canonic_normals[i], "linewidth": 2.0, "limits": [ws_limit_1,ws_limit_2]})])
                 graph.add_edges([(node_ID, node_data[0], {"type": "ws_belongs_room", "x": [], "viz_feat" : 'yellow', "linewidth":1.0, "alpha":0.5})])
-
+                
                 ### Fully connected version
                 for prior_ws_i in range(i):
                     x = segments_distance(graph.get_attributes_of_node(node_ID)["limits"],graph.get_attributes_of_node(node_ID-(prior_ws_i+1))["limits"])
@@ -261,7 +259,6 @@ class SyntheticDatasetGenerator():
 
 
         ### Walls
-
         explored_walls = []
         for i in range(base_matrix.shape[0]):
             for j in range(base_matrix.shape[1]):
@@ -274,6 +271,7 @@ class SyntheticDatasetGenerator():
                         compared_room_id = base_matrix[compared_ij[0],compared_ij[1]]
                         if compared_room_id != -1.0 and (current_room_id, compared_room_id) not in explored_walls:
                             explored_walls.append((current_room_id, compared_room_id))
+                            graph.to_directed()
                             current_room_neigh = graph.get_neighbourhood_graph(current_room_id-1).filter_graph_by_node_types(["ws"])
                             current_room_neigh_ws_id = list(current_room_neigh.filter_graph_by_node_attributes({"canonic_normal_index" : ij_difference_3D}).get_nodes_ids())[0]
                             current_room_neigh_ws_center = current_room_neigh.get_attributes_of_node(current_room_neigh_ws_id)["center"]
@@ -443,7 +441,6 @@ class SyntheticDatasetGenerator():
         for room_id in room_ids:
             graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "orange",\
                                                         "linewidth":1.0, "alpha":0.5})])
-
         return graph
     
     def set_dataset(self, tag, nxdata):
@@ -456,11 +453,13 @@ class SyntheticDatasetGenerator():
             nx_graphs_key = []
             for base_graph in self.graphs[key]:
                 filtered_graph = base_graph.filter_graph_by_node_types(node_types)
+                filtered_graph.to_directed()
                 filtered_graph.relabel_nodes() ### TODO What to do when Im dealing with different node types? Check tutorial
                 # print(f"dbg edge_types {edge_types}")
                 specific_edge_types = [e[1] for e in full_edge_types]
                 # print(f"dbg specific_edge_types {specific_edge_types}")
                 filtered_graph = filtered_graph.filter_graph_by_edge_types(specific_edge_types)
+                filtered_graph.to_directed()
                 # visualize_nxgraph(filtered_graph, "sdfg")
                 # plt.show()
                 # time.sleep(99)
@@ -483,23 +482,22 @@ class SyntheticDatasetGenerator():
             base_graph.unfreeze()
             
             ### Set positive label
-            possible_edge_types = sorted(list(base_graph.get_all_edge_types()))
+            possible_edge_types = copy.deepcopy(sorted(list(base_graph.get_all_edge_types())))
             if settings["use_gt"]:
-                for source_node_id, target_node_id,  edge_attrs in base_graph.get_attributes_of_all_edges():
-                    edge_id = (source_node_id, target_node_id)
+                for source_node_id, target_node_id, edge_attrs in copy.deepcopy(base_graph.get_attributes_of_all_edges()):
+                    
                     min_dist = [np.linalg.norm(base_graph.get_attributes_of_node(source_node_id)["center"] - base_graph.get_attributes_of_node(target_node_id)["center"])]
                     rel_pos_1 = relative_positions(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
                     centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
 
                     feature_dict = {"min_dist": min_dist, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
                     embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", feature_dict)
-                    x = embedding_builder.build_embedding(self.settings["initial_features"]["edge"])
-
-                    base_graph.update_edge_attrs(edge_id, {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})
+                    [x_straight, x_inversed] = embedding_builder.build_embedding(self.settings["initial_features"]["edge"])
+                    base_graph.update_edge_attrs((source_node_id, target_node_id), {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x_straight, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})
+                    base_graph.add_edges([(target_node_id, source_node_id, {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x_inversed, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})])
             else:
                 base_graph.remove_all_edges()
-            base_graph.to_directed()
-                
+
             ### ws dropout
             if settings["ws_dropout"] > 0.:
                 node_ids = list(base_graph.filter_graph_by_node_types(["ws"]).get_nodes_ids())
@@ -520,30 +518,30 @@ class SyntheticDatasetGenerator():
                 base_nodes_ids = query[:, 0]
                 all_target_nodes_ids = query[:, 1:]
                 new_edges = []
-                counter = 0
+                
                 for i, base_node_id in enumerate(base_nodes_ids):
                     target_nodes_ids = all_target_nodes_ids[i]
                     for target_node_id in target_nodes_ids:
                         tuple_direct, tuple_inverse = (base_node_id, target_node_id), (target_node_id, base_node_id)
                         distance = [np.linalg.norm(base_graph.get_attributes_of_node(base_node_id)["center"] - base_graph.get_attributes_of_node(target_node_id)["center"])]
                         rel_pos_1 = relative_positions(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
-                        centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
+                        centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
                         feature_dict = {"min_dist": distance, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
                         embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", feature_dict)
-                        x = embedding_builder.build_embedding(self.settings["initial_features"]["edge"])
+                        [x_straight, x_inversed] = embedding_builder.build_embedding(self.settings["initial_features"]["edge"])
 
                         if tuple_direct in positive_gt_edge_ids or tuple_inverse in positive_gt_edge_ids:
                             if not settings["use_gt"]:
-                                new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 1, "x":x, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
+                                # TODO what to do then with the label. it does not matter?
+                                new_edges.append((base_node_id, target_node_id,{"type": new_edge_type, "label": 1, "x":x_straight, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
+                                new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 1, "x":x_inversed, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
                                 # new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 1, "x":x_2, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
-                                counter += 1
                             # else:
                             #     new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
-                            #     counter += 1
                         else:
                             # print(f"dbg x 1 {x}")
-                            new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
-                            counter += 1
+                            new_edges.append((base_node_id, target_node_id,{"type": new_edge_type, "label": 0, "x":x_straight, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
+                            new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x_inversed, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
                             # new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x_2, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
                 base_graph.unfreeze()
                 base_graph.add_edges(new_edges)                
@@ -568,11 +566,11 @@ class SyntheticDatasetGenerator():
                 base_graph.unfreeze()
                 base_graph.add_edges(new_edges)
 
-            ### (un)direct
-            if settings["directed"]:
-                base_graph.to_directed()
-            else:
-                base_graph.to_undirected()
+            # ### (un)direct
+            # if settings["directed"]:
+            #     base_graph.to_directed()
+            # else:
+            #     base_graph.to_undirected()
 
             base_graph.relabel_nodes(mapping = False, copy=True)
             new_nxdataset.append(base_graph)

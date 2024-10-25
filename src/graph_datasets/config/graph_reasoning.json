@@ -6,7 +6,7 @@
         "min_room_entry_size" : [10,10],
         "room_center_distances" : [0.1,0.1],
         "wall_thickness" : [0.05,0.15],
-        "n_buildings" : 50
+        "n_buildings" : 20
     },
     "noise":{
         "global":{
@@ -40,7 +40,7 @@
             "K_random_max": 0,
             "K_random_types" : ["ws", "room"],
             "ws_dropout": 0.0,
-            "directed" : false,
+            "directed" : true,
             "room_merge_ratio" : 0.5
         },
         "final": {
@@ -50,7 +50,7 @@
             "K_random_max": 0,
             "K_random_types" : ["ws"],
             "ws_dropout": 0.0,
-            "directed" : false
+            "directed" : true
         }
     },
     "initial_features": {
