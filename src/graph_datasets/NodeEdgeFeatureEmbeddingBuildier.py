@@ -14,6 +14,8 @@ class NodeEdgeFeatureEmbeddingBuildier():
             embedding = self.build_node_embedding(full_feature_keys)
         elif self.entity_type == "edge":
             embedding = self.build_edge_embedding(full_feature_keys)
+            # print(f"dbg embedding {embedding}")
+
         return embedding
 
     def build_node_embedding(self, full_feature_keys):
