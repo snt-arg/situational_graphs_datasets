@@ -485,11 +485,9 @@ class SyntheticDatasetGenerator():
             possible_edge_types = copy.deepcopy(sorted(list(base_graph.get_all_edge_types())))
             if settings["use_gt"]:
                 for source_node_id, target_node_id, edge_attrs in copy.deepcopy(base_graph.get_attributes_of_all_edges()):
-                    
                     min_dist = [np.linalg.norm(base_graph.get_attributes_of_node(source_node_id)["center"] - base_graph.get_attributes_of_node(target_node_id)["center"])]
-                    rel_pos_1 = relative_positions(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
-                    centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
-
+                    # rel_pos_1 = relative_positions(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
+                    rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
                     feature_dict = {"min_dist": min_dist, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
                     embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", feature_dict)
                     [x_straight, x_inversed] = embedding_builder.build_embedding(self.settings["initial_features"]["edge"])
@@ -524,8 +522,8 @@ class SyntheticDatasetGenerator():
                     for target_node_id in target_nodes_ids:
                         tuple_direct, tuple_inverse = (base_node_id, target_node_id), (target_node_id, base_node_id)
                         distance = [np.linalg.norm(base_graph.get_attributes_of_node(base_node_id)["center"] - base_graph.get_attributes_of_node(target_node_id)["center"])]
-                        rel_pos_1 = relative_positions(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
-                        centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
+                        # rel_pos_1 = relative_positions(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
+                        rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
                         feature_dict = {"min_dist": distance, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
                         embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", feature_dict)
                         [x_straight, x_inversed] = embedding_builder.build_embedding(self.settings["initial_features"]["edge"])
