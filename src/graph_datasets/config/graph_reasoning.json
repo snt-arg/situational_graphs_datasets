@@ -6,7 +6,7 @@
         "min_room_entry_size" : [10,10],
         "room_center_distances" : [0.1,0.1],
         "wall_thickness" : [0.05,0.15],
-        "n_buildings" : 200
+        "n_buildings" : 20
     },
     "noise":{
         "global":{
@@ -54,8 +54,12 @@
         }
     },
     "initial_features": {
-        "ws_node" : ["length"],
-        "edge" : ["min_dist", "centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
+        "nodes": {
+            "ws": ["length"]
+        },
+        "edges": {
+            "[ws,ws]": ["min_dist", "centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
+        }
     }
 }
 

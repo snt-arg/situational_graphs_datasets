@@ -38,9 +38,9 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False):
     # plt.pause(0.001)
     # plt.show()
     if visualize_alone:
-        ax.draw()
-        ax.pause(0.001)
-        # plt.show()
+        # ax.draw()
+        # ax.pause(0.001)
+        plt.show()
 
     else:
         plt.close(fig)
