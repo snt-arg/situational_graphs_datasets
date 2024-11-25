@@ -24,6 +24,9 @@ extended_nxdatset = dataset_generator.extend_nxdataset(filtered_nxdataset, "trai
 # visualize_nxgraph(view2, "with views 2")
 # visualize_nxgraph(view3, "with views 3")
 
-for graph in extended_nxdatset["train"]:
-    visualize_nxgraph(graph, "train data")
+all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
+
+for graph in all_dataset:
+    # graph.remove_all_edges()
+    visualize_nxgraph(graph, "train data", visualize_alone=True)
     plt.show()
