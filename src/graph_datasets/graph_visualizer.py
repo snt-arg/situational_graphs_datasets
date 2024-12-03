@@ -37,6 +37,10 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False):
     # plt.draw()
     # plt.pause(0.001)
     # plt.show()
+    ax.set_aspect('equal', adjustable='datalim')
+    # ax.autoscale()
+
+    # plt.tight_layout()
     if visualize_alone:
         # ax.draw()
         # ax.pause(0.001)

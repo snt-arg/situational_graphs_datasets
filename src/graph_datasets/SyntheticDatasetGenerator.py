@@ -179,7 +179,7 @@ class SyntheticDatasetGenerator():
             node_ID = max(graph.get_nodes_ids(), default=-1) + 1
             room_center = np.array([room_center_distances[0]*(limits[0][0] + (room_entry_size[0]-1)/2), room_center_distances[1]*(limits[0][1]+(room_entry_size[1]-1)/2), 0])
             room_orientation_angle = 0.0
-            room_area = [room_center_distances[0]*room_entry_size[0] - wall_thickness, room_center_distances[1]*room_entry_size[1] - wall_thickness, 0]
+            room_area = [room_center_distances[0]*room_entry_size[0] - wall_thickness/2, room_center_distances[1]*room_entry_size[1] - wall_thickness/2, 0]
             if add_noise:
                 if self.settings["noise"]["global"]["active"]:
                     room_orientation_angle += noise_global_rotation_angle
@@ -301,147 +301,147 @@ class SyntheticDatasetGenerator():
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
 
-        ### Room merge
-        if self.settings["postprocess"]["training"]["room_merge_ratio"] > 0:
-            wall_nodes_ids = copy.deepcopy(graph).filter_graph_by_node_types("wall").get_nodes_ids()
-            for wall_node_id in wall_nodes_ids:
-                if np.random.random_sample() < self.settings["postprocess"]["training"]["room_merge_ratio"]:
-                    node_ids_to_remove = []
-                    ws_nodes_ids = copy.deepcopy(graph).get_neighbourhood_graph(wall_node_id).filter_graph_by_node_types("ws").get_nodes_ids()
-                    room_nodes_ids = []
-                    rooms_ws_nodes_ids = []
-                    num_related_walls = []
-                    for ws_node_id in ws_nodes_ids:
-                        room_nodes_ids.append(list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("room").get_nodes_ids())[0])
-                        rooms_ws_nodes_ids.append(list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[-1]).filter_graph_by_node_types("ws").get_nodes_ids()))
-                        num_related_walls.append(len(list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())))
-                    num_related_ws = [len(i) for i in rooms_ws_nodes_ids]
-                    elegibility_condition = num_related_walls.count(1) == 1 and (num_related_ws[0] < 5 and num_related_ws[1] < 5)
-                    if elegibility_condition:
-                        for i, ws_node_id in enumerate(ws_nodes_ids):
-                            related_walls = list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())
-                            if len(related_walls) == 1:
-                                node_ids_to_remove.append(ws_node_id)
-                            else:
+        # ### Room merge
+        # if self.settings["postprocess"]["training"]["room_merge_ratio"] > 0:
+        #     wall_nodes_ids = copy.deepcopy(graph).filter_graph_by_node_types("wall").get_nodes_ids()
+        #     for wall_node_id in wall_nodes_ids:
+        #         if np.random.random_sample() < self.settings["postprocess"]["training"]["room_merge_ratio"]:
+        #             node_ids_to_remove = []
+        #             ws_nodes_ids = copy.deepcopy(graph).get_neighbourhood_graph(wall_node_id).filter_graph_by_node_types("ws").get_nodes_ids()
+        #             room_nodes_ids = []
+        #             rooms_ws_nodes_ids = []
+        #             num_related_walls = []
+        #             for ws_node_id in ws_nodes_ids:
+        #                 room_nodes_ids.append(list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("room").get_nodes_ids())[0])
+        #                 rooms_ws_nodes_ids.append(list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[-1]).filter_graph_by_node_types("ws").get_nodes_ids()))
+        #                 num_related_walls.append(len(list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())))
+        #             num_related_ws = [len(i) for i in rooms_ws_nodes_ids]
+        #             elegibility_condition = num_related_walls.count(1) == 1 and (num_related_ws[0] < 5 and num_related_ws[1] < 5)
+        #             if elegibility_condition:
+        #                 for i, ws_node_id in enumerate(ws_nodes_ids):
+        #                     related_walls = list(copy.deepcopy(graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())
+        #                     if len(related_walls) == 1:
+        #                         node_ids_to_remove.append(ws_node_id)
+        #                     else:
 
-                                ### shorten the ws
-                                ws_node_attrs = graph.get_attributes_of_node(ws_node_id)
-                                other_room_ws_centers = [graph.get_attributes_of_node(node_id)["center"] for node_id in rooms_ws_nodes_ids[1-i]]
-                                other_room_ws_closest_points = [closest_point_on_segment(center, ws_node_attrs["limits"][0], ws_node_attrs["limits"][1]) for center in other_room_ws_centers]
-                                distances = [[distance_between_points(point, ws_node_attrs["limits"][0]),distance_between_points(point, ws_node_attrs["limits"][1])] for point in other_room_ws_closest_points]
-                                distances = np.array(distances)
-                                _, min_col = np.unravel_index(np.argmin(distances), distances.shape)
-                                min_dist_idx = np.argmin(distances[:,1-min_col])
-                                ws_node_attrs["limits"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
-                                ws_node_attrs["viz_data"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx][:2]))
-                                ws_node_attrs["center"] = copy.deepcopy((np.array(ws_node_attrs["limits"][0]) + np.array(ws_node_attrs["limits"][1])) / 2)
-                                ws_length = np.linalg.norm(ws_node_attrs["limits"][0] - ws_node_attrs["limits"][1])
-                                feature_dict = {"ws_center": ws_node_attrs["center"], "ws_normal": ws_node_attrs["normal"], "ws_length": ws_length}
-                                embedding_builder = NodeEdgeFeatureEmbeddingBuildier("node", feature_dict)
-                                ws_node_attrs["x"] = embedding_builder.build_embedding(self.settings["initial_features"]["nodes"]["ws"])
+        #                         ### shorten the ws
+        #                         ws_node_attrs = graph.get_attributes_of_node(ws_node_id)
+        #                         other_room_ws_centers = [graph.get_attributes_of_node(node_id)["center"] for node_id in rooms_ws_nodes_ids[1-i]]
+        #                         other_room_ws_closest_points = [closest_point_on_segment(center, ws_node_attrs["limits"][0], ws_node_attrs["limits"][1]) for center in other_room_ws_centers]
+        #                         distances = [[distance_between_points(point, ws_node_attrs["limits"][0]),distance_between_points(point, ws_node_attrs["limits"][1])] for point in other_room_ws_closest_points]
+        #                         distances = np.array(distances)
+        #                         _, min_col = np.unravel_index(np.argmin(distances), distances.shape)
+        #                         min_dist_idx = np.argmin(distances[:,1-min_col])
+        #                         ws_node_attrs["limits"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
+        #                         ws_node_attrs["viz_data"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx][:2]))
+        #                         ws_node_attrs["center"] = copy.deepcopy((np.array(ws_node_attrs["limits"][0]) + np.array(ws_node_attrs["limits"][1])) / 2)
+        #                         ws_length = np.linalg.norm(ws_node_attrs["limits"][0] - ws_node_attrs["limits"][1])
+        #                         feature_dict = {"ws_center": ws_node_attrs["center"], "ws_normal": ws_node_attrs["normal"], "ws_length": ws_length}
+        #                         embedding_builder = NodeEdgeFeatureEmbeddingBuildier("node", feature_dict)
+        #                         ws_node_attrs["x"] = embedding_builder.build_embedding(self.settings["initial_features"]["nodes"]["ws"])
 
-                                ### update shortened ws' wall's center
-                                related_walls.remove(wall_node_id)
-                                for related_wall in related_walls:
-                                    neigh_wall_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(related_wall).filter_graph_by_node_types("ws").get_nodes_ids())
-                                    neigh_wall_ws.remove(ws_node_id)
-                                    new_wall_center = np.array((np.array(graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(ws_node_attrs["center"])) / 2)
-                                    wall_attrs = graph.get_attributes_of_node(related_wall)
-                                    wall_attrs["center"] = list(new_wall_center)
-                                    wall_attrs["viz_data"] = new_wall_center
-                                    wall_attrs["x"] = new_wall_center
+        #                         ### update shortened ws' wall's center
+        #                         related_walls.remove(wall_node_id)
+        #                         for related_wall in related_walls:
+        #                             neigh_wall_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(related_wall).filter_graph_by_node_types("ws").get_nodes_ids())
+        #                             neigh_wall_ws.remove(ws_node_id)
+        #                             new_wall_center = np.array((np.array(graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(ws_node_attrs["center"])) / 2)
+        #                             wall_attrs = graph.get_attributes_of_node(related_wall)
+        #                             wall_attrs["center"] = list(new_wall_center)
+        #                             wall_attrs["viz_data"] = new_wall_center
+        #                             wall_attrs["x"] = new_wall_center
 
-                        ### merge same plane ws
-                        random.shuffle(room_nodes_ids)
-                        room1_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[0]).filter_graph_by_node_types("ws").get_nodes_ids())
-                        room2_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[1]).filter_graph_by_node_types("ws").get_nodes_ids())
-                        combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
-                        collinearity = [are_segments_collinear(graph.get_attributes_of_node(combination[0])["limits"], graph.get_attributes_of_node(combination[1])["limits"]) for combination in combinations]
-                        collinearity_indeces = [index for index, value in enumerate(collinearity) if value]
-                        for collinearity_index in collinearity_indeces:
-                            if not len(set(combinations[collinearity_index]).intersection(set(node_ids_to_remove))) != 0:
-                                combination = combinations[collinearity_index]
-                                ws0_attrs_limits = graph.get_attributes_of_node(combination[0])["limits"]
-                                ws1_attrs_limits = graph.get_attributes_of_node(combination[1])["limits"]
-                                candidates_limits = list(itertools.product(ws0_attrs_limits, ws1_attrs_limits))
-                                distances = [distance_between_points(points[0], points[1]) for points in candidates_limits]
-                                # if min(distances) < wall_thickness*2:
-                                if True:
-                                    new_limits = candidates_limits[np.argmax(distances)]
-                                    new_center = (new_limits[0] + new_limits[1]) / 2
+        #                 ### merge same plane ws
+        #                 random.shuffle(room_nodes_ids)
+        #                 room1_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[0]).filter_graph_by_node_types("ws").get_nodes_ids())
+        #                 room2_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[1]).filter_graph_by_node_types("ws").get_nodes_ids())
+        #                 combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
+        #                 collinearity = [are_segments_collinear(graph.get_attributes_of_node(combination[0])["limits"], graph.get_attributes_of_node(combination[1])["limits"]) for combination in combinations]
+        #                 collinearity_indeces = [index for index, value in enumerate(collinearity) if value]
+        #                 for collinearity_index in collinearity_indeces:
+        #                     if not len(set(combinations[collinearity_index]).intersection(set(node_ids_to_remove))) != 0:
+        #                         combination = combinations[collinearity_index]
+        #                         ws0_attrs_limits = graph.get_attributes_of_node(combination[0])["limits"]
+        #                         ws1_attrs_limits = graph.get_attributes_of_node(combination[1])["limits"]
+        #                         candidates_limits = list(itertools.product(ws0_attrs_limits, ws1_attrs_limits))
+        #                         distances = [distance_between_points(points[0], points[1]) for points in candidates_limits]
+        #                         # if min(distances) < wall_thickness*2:
+        #                         if True:
+        #                             new_limits = candidates_limits[np.argmax(distances)]
+        #                             new_center = (new_limits[0] + new_limits[1]) / 2
 
-                                    ws0_attrs = graph.get_attributes_of_node(combination[0])
-                                    ws0_attrs["limits"] = list(new_limits)
-                                    ws0_attrs["viz_data"] = list(new_limits)
-                                    ws0_attrs["center"] = new_center
-                                    ws0_length = np.linalg.norm(ws0_attrs["limits"][0] - ws0_attrs["limits"][1])
+        #                             ws0_attrs = graph.get_attributes_of_node(combination[0])
+        #                             ws0_attrs["limits"] = list(new_limits)
+        #                             ws0_attrs["viz_data"] = list(new_limits)
+        #                             ws0_attrs["center"] = new_center
+        #                             ws0_length = np.linalg.norm(ws0_attrs["limits"][0] - ws0_attrs["limits"][1])
 
-                                    feature_dict = {"ws_center": ws0_attrs["center"][:2], "ws_normal": ws0_attrs["normal"][:2], "ws_length": ws0_length}
-                                    embedding_builder = NodeEdgeFeatureEmbeddingBuildier("node", feature_dict)
-                                    ws0_attrs["x"] = embedding_builder.build_embedding(self.settings["initial_features"]["nodes"]["ws"])
+        #                             feature_dict = {"ws_center": ws0_attrs["center"][:2], "ws_normal": ws0_attrs["normal"][:2], "ws_length": ws0_length}
+        #                             embedding_builder = NodeEdgeFeatureEmbeddingBuildier("node", feature_dict)
+        #                             ws0_attrs["x"] = embedding_builder.build_embedding(self.settings["initial_features"]["nodes"]["ws"])
 
-                                    node_ids_to_remove.append(combination[1])
-                                    ws0_walls_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(combination[0]).filter_graph_by_node_types("wall").get_nodes_ids())
-                                    ws1_walls_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(combination[1]).filter_graph_by_node_types("wall").get_nodes_ids())
-                                    for ws1_wall_id in ws1_walls_ids:
-                                        graph.add_edges([(combination[0], ws1_wall_id, {"type": "ws_belongs_wall", "x": [], "viz_feat": "m", "linewidth":1.0, "alpha":0.5})])
-                                        neigh_wall_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(ws1_wall_id).filter_graph_by_node_types("ws").get_nodes_ids())
-                                        neigh_wall_ws.remove(combination[1])
-                                        if combination[0] != neigh_wall_ws[0]:
-                                            graph.add_edges([(combination[0], neigh_wall_ws[0], {"type": "ws_same_wall", "x": [], "viz_feat": "orange", "linewidth":1.0, "alpha":0.5})])
+        #                             node_ids_to_remove.append(combination[1])
+        #                             ws0_walls_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(combination[0]).filter_graph_by_node_types("wall").get_nodes_ids())
+        #                             ws1_walls_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(combination[1]).filter_graph_by_node_types("wall").get_nodes_ids())
+        #                             for ws1_wall_id in ws1_walls_ids:
+        #                                 graph.add_edges([(combination[0], ws1_wall_id, {"type": "ws_belongs_wall", "x": [], "viz_feat": "m", "linewidth":1.0, "alpha":0.5})])
+        #                                 neigh_wall_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(ws1_wall_id).filter_graph_by_node_types("ws").get_nodes_ids())
+        #                                 neigh_wall_ws.remove(combination[1])
+        #                                 if combination[0] != neigh_wall_ws[0]:
+        #                                     graph.add_edges([(combination[0], neigh_wall_ws[0], {"type": "ws_same_wall", "x": [], "viz_feat": "orange", "linewidth":1.0, "alpha":0.5})])
 
-                                    ### update merged ws' wall's center
-                                    for related_wall in ws0_walls_ids + ws1_walls_ids:
-                                        neigh_wall_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(related_wall).filter_graph_by_node_types("ws").get_nodes_ids())
-                                        if combination[0] in neigh_wall_ws: neigh_wall_ws.remove(combination[0])
-                                        if combination[1] in neigh_wall_ws: neigh_wall_ws.remove(combination[1])
+        #                             ### update merged ws' wall's center
+        #                             for related_wall in ws0_walls_ids + ws1_walls_ids:
+        #                                 neigh_wall_ws = list(copy.deepcopy(graph).get_neighbourhood_graph(related_wall).filter_graph_by_node_types("ws").get_nodes_ids())
+        #                                 if combination[0] in neigh_wall_ws: neigh_wall_ws.remove(combination[0])
+        #                                 if combination[1] in neigh_wall_ws: neigh_wall_ws.remove(combination[1])
 
-                                        if neigh_wall_ws:
-                                            new_wall_center = (np.array(graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(new_center)) / 2
-                                            wall_attrs = graph.get_attributes_of_node(related_wall)
-                                            wall_attrs["center"] = list(new_wall_center)
-                                            wall_attrs["viz_data"] = new_wall_center
-                                            wall_attrs["x"] = new_wall_center
+        #                                 if neigh_wall_ws:
+        #                                     new_wall_center = (np.array(graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(new_center)) / 2
+        #                                     wall_attrs = graph.get_attributes_of_node(related_wall)
+        #                                     wall_attrs["center"] = list(new_wall_center)
+        #                                     wall_attrs["viz_data"] = new_wall_center
+        #                                     wall_attrs["x"] = new_wall_center
                     
 
-                        ### update room centers
-                        room1_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[0]).filter_graph_by_node_types("ws").get_nodes_ids())
-                        room2_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[1]).filter_graph_by_node_types("ws").get_nodes_ids())
-                        node_ids_to_remove.append(room_nodes_ids[1])
-                        node_ids_to_remove.append(wall_node_id)
-                        for node_id in room2_ws_nodes_ids:
-                            attrs = graph.get_attributes_of_edge((node_id, room_nodes_ids[1]))
-                            graph.add_edges([(node_id, room_nodes_ids[0], attrs)])
+        #                 ### update room centers
+        #                 room1_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[0]).filter_graph_by_node_types("ws").get_nodes_ids())
+        #                 room2_ws_nodes_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_nodes_ids[1]).filter_graph_by_node_types("ws").get_nodes_ids())
+        #                 node_ids_to_remove.append(room_nodes_ids[1])
+        #                 node_ids_to_remove.append(wall_node_id)
+        #                 for node_id in room2_ws_nodes_ids:
+        #                     attrs = graph.get_attributes_of_edge((node_id, room_nodes_ids[1]))
+        #                     graph.add_edges([(node_id, room_nodes_ids[0], attrs)])
                         
-                        ws_centers = [[graph.get_attributes_of_node(node_id)["center"]] for node_id in room1_ws_nodes_ids + room2_ws_nodes_ids]
-                        ws_centers = np.concatenate(ws_centers, axis=0)
-                        room_center = np.mean(ws_centers, axis=0)
-                        room1_attrs = graph.get_attributes_of_node(room_nodes_ids[0])
+        #                 ws_centers = [[graph.get_attributes_of_node(node_id)["center"]] for node_id in room1_ws_nodes_ids + room2_ws_nodes_ids]
+        #                 ws_centers = np.concatenate(ws_centers, axis=0)
+        #                 room_center = np.mean(ws_centers, axis=0)
+        #                 room1_attrs = graph.get_attributes_of_node(room_nodes_ids[0])
 
-                        room1_attrs["center"] = room_center
-                        room1_attrs["x"] = room_center
-                        room1_attrs["viz_data"] = room_center[:2]
-                        graph.update_node_attrs(room_nodes_ids[0], room1_attrs)
+        #                 room1_attrs["center"] = room_center
+        #                 room1_attrs["x"] = room_center
+        #                 room1_attrs["viz_data"] = room_center[:2]
+        #                 graph.update_node_attrs(room_nodes_ids[0], room1_attrs)
 
-                        combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
-                        for combination in combinations:
-                            x = segments_distance(graph.get_attributes_of_node(combination[0])["limits"],graph.get_attributes_of_node(combination[1])["limits"])
-                            graph.add_edges([(combination[0], combination[1], {"type": "ws_same_room", "x":x, "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
+        #                 combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
+        #                 for combination in combinations:
+        #                     x = segments_distance(graph.get_attributes_of_node(combination[0])["limits"],graph.get_attributes_of_node(combination[1])["limits"])
+        #                     graph.add_edges([(combination[0], combination[1], {"type": "ws_same_room", "x":x, "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
 
-                        graph.remove_nodes(node_ids_to_remove)
+        #                 graph.remove_nodes(node_ids_to_remove)
 
 
-        ### Floors
-        rooms_attrs = graph.filter_graph_by_node_attributes({"type" : "room"}).get_attributes_of_all_nodes()
-        room_ids = [attr[0] for attr in rooms_attrs]
-        room_centers = [attr[1]["center"] for attr in rooms_attrs]
-        floor_center = np.array(room_centers).sum(axis=0) / len(room_centers)
-        floor_node_id = max(graph.get_nodes_ids(), default=-1) + 1
-        graph.add_nodes([(floor_node_id,{"type" : "floor", "x" : floor_center, "center" : floor_center,\
-                            "viz_type" : "Point", "viz_data" : floor_center[:2], "viz_feat" : 'oC1'})])
-        for room_id in room_ids:
-            graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "orange",\
-                                                        "linewidth":1.0, "alpha":0.5})])
+        # ### Floors
+        # rooms_attrs = graph.filter_graph_by_node_attributes({"type" : "room"}).get_attributes_of_all_nodes()
+        # room_ids = [attr[0] for attr in rooms_attrs]
+        # room_centers = [attr[1]["center"] for attr in rooms_attrs]
+        # floor_center = np.array(room_centers).sum(axis=0) / len(room_centers)
+        # floor_node_id = max(graph.get_nodes_ids(), default=-1) + 1
+        # graph.add_nodes([(floor_node_id,{"type" : "floor", "x" : floor_center, "center" : floor_center,\
+        #                     "viz_type" : "Point", "viz_data" : floor_center[:2], "viz_feat" : 'oC1'})])
+        # for room_id in room_ids:
+        #     graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "orange",\
+        #                                                 "linewidth":1.0, "alpha":0.5})])
         return graph
     
     def set_dataset(self, tag, nxdata):
@@ -464,78 +464,106 @@ class SyntheticDatasetGenerator():
 
         return nx_graphs
     
+    def get_filtered_graph(self, base_graph, node_types, full_edge_types):
+        filtered_graph = base_graph.filter_graph_by_node_types(node_types)
+        filtered_graph.to_directed()
+        filtered_graph.relabel_nodes(copy=True) ### TODO What to do when Im dealing with different node types? Check tutorial
+        specific_edge_types = [e[1] for e in full_edge_types]
+        filtered_graph = filtered_graph.filter_graph_by_edge_types(specific_edge_types)
+        filtered_graph.to_directed()
+        return filtered_graph
+    
 
     def extend_nxdataset(self, nxdataset, new_edge_type, stage):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
         new_nxdataset = []
 
-        for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
-        # for i in range(len(nxdataset)):
-            nxdata = nxdataset[i]
-            base_graph = copy.deepcopy(nxdata)
-            positive_gt_edge_ids = list(base_graph.get_edges_ids())
-            settings = self.settings["postprocess"][stage]
-            base_graph.unfreeze()
             
+        def apply_postprocess(self, pp_settings, working_graph):
+
+            if pp_settings["pp_name"] == "filter":
+                working_graph = self.get_filtered_graph(working_graph, pp_settings["nodes"],pp_settings["edges"])
             ### Set positive label
-            possible_edge_types = copy.deepcopy(sorted(list(base_graph.get_all_edge_types())))
-            if settings["use_gt"]:
-                for source_node_id, target_node_id, edge_attrs in copy.deepcopy(base_graph.get_attributes_of_all_edges()):
-                    source_node_type = base_graph.get_attributes_of_node(source_node_id)["type"]
-                    target_node_type = base_graph.get_attributes_of_node(target_node_id)["type"]
+            if pp_settings["pp_name"] == "add_gt":
+                possible_edge_types = copy.deepcopy(sorted(list(working_graph.get_all_edge_types())))
+                for source_node_id, target_node_id, edge_attrs in copy.deepcopy(working_graph.get_attributes_of_all_edges()):
+                    source_node_type = working_graph.get_attributes_of_node(source_node_id)["type"]
+                    target_node_type = working_graph.get_attributes_of_node(target_node_id)["type"]
                     if (source_node_type, target_node_type) in self.settings["initial_features"]["edges"]:
-                        min_dist = [np.linalg.norm(base_graph.get_attributes_of_node(source_node_id)["center"] - base_graph.get_attributes_of_node(target_node_id)["center"])]
-                            # rel_pos_1 = relative_positions(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
-                        rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(source_node_id),base_graph.get_attributes_of_node(target_node_id))
+                        min_dist = [np.linalg.norm(working_graph.get_attributes_of_node(source_node_id)["center"] - working_graph.get_attributes_of_node(target_node_id)["center"])]
+                            # rel_pos_1 = relative_positions(working_graph.get_attributes_of_node(source_node_id),working_graph.get_attributes_of_node(target_node_id))
+                        rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(working_graph.get_attributes_of_node(source_node_id),working_graph.get_attributes_of_node(target_node_id))
                         feature_dict = {"min_dist": min_dist, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
                         embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", feature_dict)
                         [x_straight, x_inversed] = embedding_builder.build_embedding(self.settings["initial_features"]["edges"][tuple(["ws","ws"])])
                     else:
                         [x_straight, x_inversed] = [[],[]]
-                    base_graph.update_edge_attrs((source_node_id, target_node_id), {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x_straight, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})
-                    base_graph.add_edges([(target_node_id, source_node_id, {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x_inversed, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})])
-            else:
-                base_graph.remove_all_edges()
+                    working_graph.update_edge_attrs((source_node_id, target_node_id), {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x_straight, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})
+                    working_graph.add_edges([(target_node_id, source_node_id, {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x_inversed, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})])
+            
+            elif pp_settings["pp_name"] == "remove_all_edges":
+                    working_graph.remove_all_edges()
 
-            ### ws dropout
-            if settings["ws_dropout"] > 0.:
-                node_ids = list(base_graph.filter_graph_by_node_types(["ws"]).get_nodes_ids())
-                node_ids_selected = []
-                for node_id in node_ids:
-                    if np.random.random_sample() < settings["ws_dropout"]:
-                        node_ids_selected.append(node_id)
-                base_graph.remove_nodes(node_ids_selected)
+            elif pp_settings["pp_name"] == "dropout":
+                ### room dropout
+                if pp_settings["room"] > 0.:
+                    room_node_ids = copy.deepcopy(list(working_graph.filter_graph_by_node_types(["room"]).get_nodes_ids()))
+                    node_ids_selected = []
+                    for room_node_id in room_node_ids:
+                        left_rooms = list(working_graph.filter_graph_by_node_types(["room"]).get_nodes_ids())
+                        if len(left_rooms) > 1 and np.random.random_sample() < pp_settings["room"]:
+                            node_ids_selected.append(room_node_id)
+                            # asdf
+                            ws_node_ids = list(working_graph.get_neighbourhood_graph(room_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
+                            node_ids_selected = node_ids_selected + ws_node_ids
+                            for ws_node_id in ws_node_ids:
+                                wall_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types(["wall"]).get_nodes_ids())
+                                for wall_ws_node_id in wall_ws_node_ids:
+                                    if len(list(working_graph.get_neighbourhood_graph(wall_ws_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())) < 3:
+                                        node_ids_selected.append(wall_ws_node_id)
+                        working_graph.remove_nodes(node_ids_selected)
+
+                ### ws dropout
+                if pp_settings["ws"] > 0.:
+                    ws_node_ids = list(working_graph.filter_graph_by_node_types(["ws"]).get_nodes_ids())
+                    node_ids_selected = []
+                    for ws_node_id in ws_node_ids:
+                        same_room_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types(["ws_belong_room"]).get_nodes_ids())
+                        if len(same_room_ws_node_ids) > 1 and np.random.random_sample() < pp_settings["ws"]:
+                            node_ids_selected.append(ws_node_id)
+                    working_graph.remove_nodes(node_ids_selected)
+            
 
             ### Include K nearest neighbouors edges
-            if settings["K_nearest_max"] > 0:
-                node_ids = list(base_graph.filter_graph_by_node_types(settings["K_nearest_types"]).get_nodes_ids())
-                centers = np.array([base_graph.get_attributes_of_node(node_id)["center"] for node_id in node_ids])
+            elif pp_settings["pp_name"] == "K_near_neigh":
+                node_ids = list(working_graph.filter_graph_by_node_types(pp_settings["types"]).get_nodes_ids())
+                centers = np.array([working_graph.get_attributes_of_node(node_id)["center"] for node_id in node_ids])
                 kdt = KDTree(centers, leaf_size=30, metric='euclidean')
-                k = len(centers) if len(centers) <= settings["K_nearest_max"]+1 else settings["K_nearest_max"]+1
+                k = len(centers) if len(centers) <= pp_settings["max"]+1 else pp_settings["max"]+1
                 query = kdt.query(centers, k=k, return_distance=False)
                 query = np.array(list((map(lambda e: list(map(node_ids.__getitem__, e)), query))))
                 base_nodes_ids = query[:, 0]
                 all_target_nodes_ids = query[:, 1:]
                 new_edges = []
+                positive_gt_edge_ids = list(working_graph.get_edges_ids())
                 
                 for i, base_node_id in enumerate(base_nodes_ids):
                     target_nodes_ids = all_target_nodes_ids[i]
                     for target_node_id in target_nodes_ids:
-                        base_node_type = base_graph.get_attributes_of_node(base_node_id)["type"]
-                        target_node_type = base_graph.get_attributes_of_node(target_node_id)["type"]
+                        base_node_type = working_graph.get_attributes_of_node(base_node_id)["type"]
+                        target_node_type = working_graph.get_attributes_of_node(target_node_id)["type"]
                         tuple_direct, tuple_inverse = (base_node_id, target_node_id), (target_node_id, base_node_id)
                         if (base_node_type, target_node_type) in self.settings["initial_features"]["edges"]:
-                            distance = [np.linalg.norm(base_graph.get_attributes_of_node(base_node_id)["center"] - base_graph.get_attributes_of_node(target_node_id)["center"])]
-                            # rel_pos_1 = relative_positions(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
-                            rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(base_graph.get_attributes_of_node(base_node_id),base_graph.get_attributes_of_node(target_node_id))
+                            distance = [np.linalg.norm(working_graph.get_attributes_of_node(base_node_id)["center"] - working_graph.get_attributes_of_node(target_node_id)["center"])]
+                            rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(working_graph.get_attributes_of_node(base_node_id),working_graph.get_attributes_of_node(target_node_id))
                             feature_dict = {"min_dist": distance, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
                             embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", feature_dict)
                             [x_straight, x_inversed] = embedding_builder.build_embedding(self.settings["initial_features"]["edges"][tuple(["ws","ws"])])
                         else:
                             [x_straight, x_inversed] = [[],[]]
 
-                        if tuple_direct in positive_gt_edge_ids or tuple_inverse in positive_gt_edge_ids:
-                            if not settings["use_gt"]:
+                        if tuple_direct in positive_gt_edge_ids or tuple_inverse in positive_gt_edge_ids: ### TODO merge use_gt with false
+                            if not pp_settings["use_gt"]:
                                 # TODO what to do then with the label. it does not matter?
                                 new_edges.append((base_node_id, target_node_id,{"type": new_edge_type, "label": 1, "x":x_straight, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
                                 new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 1, "x":x_inversed, "viz_feat" : 'g', "linewidth":1.0, "alpha":0.5}))
@@ -546,37 +574,51 @@ class SyntheticDatasetGenerator():
                             new_edges.append((base_node_id, target_node_id,{"type": new_edge_type, "label": 0, "x":x_straight, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
                             new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x_inversed, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
                             # new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x_2, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
-                base_graph.unfreeze()
-                base_graph.add_edges(new_edges)                
+                working_graph.unfreeze()
+                working_graph.add_edges(new_edges)                
 
             ### Include random edges
-            if settings["K_random_max"] > 0:
-                nodes_ids = list(base_graph.filter_graph_by_node_types(settings["K_random_types"]).get_nodes_ids())
+            #{"pp_name": "K_rand_neigh", "max": 0, "types":["ws"], "use_gt":true}
+            elif pp_settings["pp_name"] == "K_rand_neigh":
+                nodes_ids = list(working_graph.filter_graph_by_node_types(pp_settings["types"]).get_nodes_ids())
                 for base_node_id in nodes_ids:
                     potential_nodes_ids = copy.deepcopy(nodes_ids)
                     potential_nodes_ids.remove(base_node_id)
                     random.shuffle(potential_nodes_ids)
-                    random_nodes_ids = potential_nodes_ids[:settings["K_random_max"]]
+                    random_nodes_ids = potential_nodes_ids[pp_settings["max"]]
 
                     new_edges = []
                     for target_node_id in random_nodes_ids:
                         tuple_direct = (base_node_id, target_node_id)
                         tuple_inverse = (tuple_direct[1], tuple_direct[0])
-                        if tuple_direct not in list(base_graph.get_edges_ids()) and tuple_inverse not in list(base_graph.get_edges_ids()):
+                        if tuple_direct not in list(working_graph.get_edges_ids()) and tuple_inverse not in list(working_graph.get_edges_ids()):
                             ### TODO Include X
                             new_edges.append((tuple_direct[0], tuple_direct[1],{"type": new_edge_type, "label": 0, "viz_feat" : 'blue', "linewidth":1.0, "alpha":0.5}))
 
-                base_graph.unfreeze()
-                base_graph.add_edges(new_edges)
+                working_graph.unfreeze()
+                working_graph.add_edges(new_edges)
 
-            # ### (un)direct
-            # if settings["directed"]:
-            #     base_graph.to_directed()
-            # else:
-            #     base_graph.to_undirected()
+            elif pp_settings["pp_name"] == "merge_room":
+                working_graph = self.merge_rooms(pp_settings, working_graph)
 
-            base_graph.relabel_nodes(mapping = False, copy=True)
-            base_graph.remove_self_loops()
+            elif pp_settings["pp_name"] == "plot":
+                visualize_nxgraph(working_graph, "test", visualize_alone=True)
+            elif pp_settings["pp_name"] == "remove_self_loops":
+                working_graph.remove_self_loops()
+            elif pp_settings["pp_name"] == "relabel_nodes":
+                working_graph.relabel_nodes(mapping = pp_settings["mapping"], copy=pp_settings["copy"])
+            elif pp_settings["pp_name"] == "unfreeze":
+                working_graph.unfreeze()
+
+            return working_graph
+
+        for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
+            nxdata = nxdataset[i]
+            base_graph = copy.deepcopy(nxdata)
+            pp_settings_list = self.settings["postprocess"][stage]
+            for pp_settings in pp_settings_list:
+                base_graph = apply_postprocess(self, pp_settings, base_graph)
+
             new_nxdataset.append(base_graph)
 
         val_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["val"]-self.settings["training_split"]["test"]))
@@ -584,6 +626,136 @@ class SyntheticDatasetGenerator():
         extended_nxdatset = {"train" : new_nxdataset[:val_start_index], "val" : new_nxdataset[val_start_index:test_start_index],"test" : new_nxdataset[test_start_index:-1]}
 
         return extended_nxdatset
+    
+
+    def merge_rooms(self, pp_settings, working_graph):
+        wall_nodes_ids = copy.deepcopy(working_graph).filter_graph_by_node_types("wall").get_nodes_ids()
+        for wall_node_id in wall_nodes_ids:
+            if np.random.random_sample() < pp_settings["ratio"]:
+                node_ids_to_remove = []
+                ws_nodes_ids = copy.deepcopy(working_graph).get_neighbourhood_graph(wall_node_id).filter_graph_by_node_types("ws").get_nodes_ids()
+                room_nodes_ids = []
+                rooms_ws_nodes_ids = []
+                num_related_walls = []
+                for ws_node_id in ws_nodes_ids:
+                    room_nodes_ids.append(list(copy.deepcopy(working_graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("room").get_nodes_ids())[0])
+                    rooms_ws_nodes_ids.append(list(copy.deepcopy(working_graph).get_neighbourhood_graph(room_nodes_ids[-1]).filter_graph_by_node_types("ws").get_nodes_ids()))
+                    num_related_walls.append(len(list(copy.deepcopy(working_graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())))
+                num_related_ws = [len(i) for i in rooms_ws_nodes_ids]
+                elegibility_condition = num_related_walls.count(1) == 1 and (num_related_ws[0] < 5 and num_related_ws[1] < 5)
+                if elegibility_condition:
+                    for i, ws_node_id in enumerate(ws_nodes_ids):
+                        related_walls = list(copy.deepcopy(working_graph).get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types("wall").get_nodes_ids())
+                        if len(related_walls) == 1:
+                            node_ids_to_remove.append(ws_node_id)
+                        else:
+
+                            ### shorten the ws
+                            ws_node_attrs = working_graph.get_attributes_of_node(ws_node_id)
+                            other_room_ws_centers = [working_graph.get_attributes_of_node(node_id)["center"] for node_id in rooms_ws_nodes_ids[1-i]]
+                            other_room_ws_closest_points = [closest_point_on_segment(center, ws_node_attrs["limits"][0], ws_node_attrs["limits"][1]) for center in other_room_ws_centers]
+                            distances = [[distance_between_points(point, ws_node_attrs["limits"][0]),distance_between_points(point, ws_node_attrs["limits"][1])] for point in other_room_ws_closest_points]
+                            distances = np.array(distances)
+                            _, min_col = np.unravel_index(np.argmin(distances), distances.shape)
+                            min_dist_idx = np.argmin(distances[:,1-min_col])
+                            ws_node_attrs["limits"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
+                            ws_node_attrs["viz_data"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx][:2]))
+                            ws_node_attrs["center"] = copy.deepcopy((np.array(ws_node_attrs["limits"][0]) + np.array(ws_node_attrs["limits"][1])) / 2)
+                            ws_length = np.linalg.norm(ws_node_attrs["limits"][0] - ws_node_attrs["limits"][1])
+                            feature_dict = {"ws_center": ws_node_attrs["center"], "ws_normal": ws_node_attrs["normal"], "ws_length": ws_length}
+                            embedding_builder = NodeEdgeFeatureEmbeddingBuildier("node", feature_dict)
+                            ws_node_attrs["x"] = embedding_builder.build_embedding(self.settings["initial_features"]["nodes"]["ws"])
+
+                            ### update shortened ws' wall's center
+                            related_walls.remove(wall_node_id)
+                            for related_wall in related_walls:
+                                neigh_wall_ws = list(copy.deepcopy(working_graph).get_neighbourhood_graph(related_wall).filter_graph_by_node_types("ws").get_nodes_ids())
+                                neigh_wall_ws.remove(ws_node_id)
+                                new_wall_center = np.array((np.array(working_graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(ws_node_attrs["center"])) / 2)
+                                wall_attrs = working_graph.get_attributes_of_node(related_wall)
+                                wall_attrs["center"] = list(new_wall_center)
+                                wall_attrs["viz_data"] = new_wall_center
+                                wall_attrs["x"] = new_wall_center
+
+                    ### merge same plane ws
+                    random.shuffle(room_nodes_ids)
+                    room1_ws_nodes_ids = list(copy.deepcopy(working_graph).get_neighbourhood_graph(room_nodes_ids[0]).filter_graph_by_node_types("ws").get_nodes_ids())
+                    room2_ws_nodes_ids = list(copy.deepcopy(working_graph).get_neighbourhood_graph(room_nodes_ids[1]).filter_graph_by_node_types("ws").get_nodes_ids())
+                    combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
+                    collinearity = [are_segments_collinear(working_graph.get_attributes_of_node(combination[0])["limits"], working_graph.get_attributes_of_node(combination[1])["limits"]) for combination in combinations]
+                    collinearity_indeces = [index for index, value in enumerate(collinearity) if value]
+                    for collinearity_index in collinearity_indeces:
+                        if not len(set(combinations[collinearity_index]).intersection(set(node_ids_to_remove))) != 0:
+                            combination = combinations[collinearity_index]
+                            ws0_attrs_limits = working_graph.get_attributes_of_node(combination[0])["limits"]
+                            ws1_attrs_limits = working_graph.get_attributes_of_node(combination[1])["limits"]
+                            candidates_limits = list(itertools.product(ws0_attrs_limits, ws1_attrs_limits))
+                            distances = [distance_between_points(points[0], points[1]) for points in candidates_limits]
+                            # if min(distances) < wall_thickness*2:
+                            if True:
+                                new_limits = candidates_limits[np.argmax(distances)]
+                                new_center = (new_limits[0] + new_limits[1]) / 2
+
+                                ws0_attrs = working_graph.get_attributes_of_node(combination[0])
+                                ws0_attrs["limits"] = list(new_limits)
+                                ws0_attrs["viz_data"] = list(new_limits)
+                                ws0_attrs["center"] = new_center
+                                ws0_length = np.linalg.norm(ws0_attrs["limits"][0] - ws0_attrs["limits"][1])
+
+                                feature_dict = {"ws_center": ws0_attrs["center"][:2], "ws_normal": ws0_attrs["normal"][:2], "ws_length": ws0_length}
+                                embedding_builder = NodeEdgeFeatureEmbeddingBuildier("node", feature_dict)
+                                ws0_attrs["x"] = embedding_builder.build_embedding(self.settings["initial_features"]["nodes"]["ws"])
+
+                                node_ids_to_remove.append(combination[1])
+                                ws0_walls_ids = list(copy.deepcopy(working_graph).get_neighbourhood_graph(combination[0]).filter_graph_by_node_types("wall").get_nodes_ids())
+                                ws1_walls_ids = list(copy.deepcopy(working_graph).get_neighbourhood_graph(combination[1]).filter_graph_by_node_types("wall").get_nodes_ids())
+                                for ws1_wall_id in ws1_walls_ids:
+                                    working_graph.add_edges([(combination[0], ws1_wall_id, {"type": "ws_belongs_wall", "x": [], "viz_feat": "m", "linewidth":1.0, "alpha":0.5})])
+                                    neigh_wall_ws = list(copy.deepcopy(working_graph).get_neighbourhood_graph(ws1_wall_id).filter_graph_by_node_types("ws").get_nodes_ids())
+                                    neigh_wall_ws.remove(combination[1])
+                                    if combination[0] != neigh_wall_ws[0]:
+                                        working_graph.add_edges([(combination[0], neigh_wall_ws[0], {"type": "ws_same_wall", "x": [], "viz_feat": "orange", "linewidth":1.0, "alpha":0.5})])
+
+                                ### update merged ws' wall's center
+                                for related_wall in ws0_walls_ids + ws1_walls_ids:
+                                    neigh_wall_ws = list(copy.deepcopy(working_graph).get_neighbourhood_graph(related_wall).filter_graph_by_node_types("ws").get_nodes_ids())
+                                    if combination[0] in neigh_wall_ws: neigh_wall_ws.remove(combination[0])
+                                    if combination[1] in neigh_wall_ws: neigh_wall_ws.remove(combination[1])
+
+                                    if neigh_wall_ws:
+                                        new_wall_center = (np.array(working_graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(new_center)) / 2
+                                        wall_attrs = working_graph.get_attributes_of_node(related_wall)
+                                        wall_attrs["center"] = list(new_wall_center)
+                                        wall_attrs["viz_data"] = new_wall_center
+                                        wall_attrs["x"] = new_wall_center
+                
+
+                    ### update room centers
+                    room1_ws_nodes_ids = list(copy.deepcopy(working_graph).get_neighbourhood_graph(room_nodes_ids[0]).filter_graph_by_node_types("ws").get_nodes_ids())
+                    room2_ws_nodes_ids = list(copy.deepcopy(working_graph).get_neighbourhood_graph(room_nodes_ids[1]).filter_graph_by_node_types("ws").get_nodes_ids())
+                    node_ids_to_remove.append(room_nodes_ids[1])
+                    node_ids_to_remove.append(wall_node_id)
+                    for node_id in room2_ws_nodes_ids:
+                        attrs = working_graph.get_attributes_of_edge((node_id, room_nodes_ids[1]))
+                        working_graph.add_edges([(node_id, room_nodes_ids[0], attrs)])
+                    
+                    ws_centers = [[working_graph.get_attributes_of_node(node_id)["center"]] for node_id in room1_ws_nodes_ids + room2_ws_nodes_ids]
+                    ws_centers = np.concatenate(ws_centers, axis=0)
+                    room_center = np.mean(ws_centers, axis=0)
+                    room1_attrs = working_graph.get_attributes_of_node(room_nodes_ids[0])
+
+                    room1_attrs["center"] = room_center
+                    room1_attrs["x"] = room_center
+                    room1_attrs["viz_data"] = room_center[:2]
+                    working_graph.update_node_attrs(room_nodes_ids[0], room1_attrs)
+
+                    combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
+                    for combination in combinations:
+                        x = segments_distance(working_graph.get_attributes_of_node(combination[0])["limits"],working_graph.get_attributes_of_node(combination[1])["limits"])
+                        working_graph.add_edges([(combination[0], combination[1], {"type": "ws_same_room", "x":x, "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
+
+                    working_graph.remove_nodes(node_ids_to_remove)
+        return working_graph
 
 
     def reintroduce_predicted_edges(self, unparented_base_graph, predictions, image_name = "name not provided"):

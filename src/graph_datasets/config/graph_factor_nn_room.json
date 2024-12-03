@@ -33,33 +33,25 @@
         "test" : 0.1
     },
     "postprocess": {
-        "training": [
-            {"pp_name": "merge_room", "ratio": 1.0},
-            {"pp_name": "dropout", "room": 0.5, "ws":0.0},
-            {"pp_name": "filter", "nodes": ["ws"], "edges":[
-                [
-                    "ws",
-                    "ws_same_room",
-                    "ws"
-                ],[
-                    "ws",
-                    "ws_same_wall",
-                    "ws"
-                ]
-            ]},
-            {"pp_name": "add_gt"},
-            {"pp_name": "dropout", "room": 0.0, "ws":0.1},
-            {"pp_name": "plot"},
-            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":true},
-            {"pp_name": "plot"},
-            {"pp_name": "relabel_nodes", "mapping": false, "copy":true},
-            {"pp_name": "remove_self_loops"},
-            {"pp_name": "unfreeze"}
-        ],
-        "final": [
-            {"pp_name": "remove_all_edges"},
-            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false}
-        ]
+        "training": {
+            "use_gt": true,
+            "K_nearest_max": 15,
+            "K_nearest_types" : ["ws"],
+            "K_random_max": 0,
+            "K_random_types" : ["ws"],
+            "ws_dropout": 0.1,
+            "directed" : true,
+            "room_merge_ratio" : 1.0
+        },
+        "final": {
+            "use_gt": false,
+            "K_nearest_max": 15,
+            "K_nearest_types" : ["ws"],
+            "K_random_max": 0,
+            "K_random_types" : ["ws"],
+            "ws_dropout": 0.0,
+            "directed" : true
+        }
     },
     "initial_features": {
         "nodes": {
