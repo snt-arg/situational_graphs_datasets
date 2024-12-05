@@ -36,7 +36,7 @@ class NodeEdgeFeatureEmbeddingBuildier():
 
     def build_edge_embedding(self, full_feature_keys):
         
-        def add_edge_features_straight(feature_keys, feats):
+        def add_edge_features(feature_keys, feats):
             if feature_keys[0] == "min_dist":
                 feats = np.concatenate([feats, self.feature_dictionary["min_dist"]]).astype(np.float32)  #, np.log(distance+1)]).astype(np.float32)
             elif feature_keys[0] == "relative_pos":
@@ -48,28 +48,9 @@ class NodeEdgeFeatureEmbeddingBuildier():
             elif feature_keys[0] == "relative_ang_normal":
                 feats = np.concatenate([feats, [self.feature_dictionary["relative_ang_normal"]]]).astype(np.float32)
             if len(feature_keys) > 1:
-                feats = add_edge_features_straight(feature_keys[1:], feats)
+                feats = add_edge_features(feature_keys[1:], feats)
             return feats
         
-        features_straight = add_edge_features_straight(full_feature_keys, [])
+        features = add_edge_features(full_feature_keys, [])
 
-        def add_edge_features_inversed(feature_keys, feats):
-            if feature_keys[0] == "min_dist":
-                feats = np.concatenate([feats, self.feature_dictionary["min_dist"]]).astype(np.float32)  #, np.log(distance+1)]).astype(np.float32)
-            elif feature_keys[0] == "relative_pos":
-                feats = np.concatenate([feats, -1*self.feature_dictionary["rel_pos_1"][:2]]).astype(np.float32)
-            elif feature_keys[0] == "centroids_distance":
-                feats = np.concatenate([feats, [self.feature_dictionary["centroids_distance"]]]).astype(np.float32)
-            elif feature_keys[0] == "angle_centroid_degrees":
-                val = list(-1*np.array([self.feature_dictionary['angle_centroid_degrees']]))
-                feats = np.concatenate([feats, val]).astype(np.float32)
-            elif feature_keys[0] == "relative_ang_normal":
-                val = list(-1*np.array([self.feature_dictionary['relative_ang_normal']]))
-                feats = np.concatenate([feats, val]).astype(np.float32)
-            if len(feature_keys) > 1:
-                feats = add_edge_features_inversed(feature_keys[1:], feats)
-            return feats
-            
-        features_inversed = add_edge_features_inversed(full_feature_keys, [])
-
-        return [features_straight, features_inversed]
+        return features

@@ -34,8 +34,8 @@
     },
     "postprocess": {
         "training": [
-            {"pp_name": "merge_room", "ratio": 1.0},
-            {"pp_name": "dropout", "room": 0.5, "ws":0.0},
+            {"pp_name": "merge_room", "ratio": 0.5},
+            {"pp_name": "dropout", "room": 0.0, "ws":0.0},
             {"pp_name": "filter", "nodes": ["ws"], "edges":[
                 [
                     "ws",
@@ -49,9 +49,7 @@
             ]},
             {"pp_name": "add_gt"},
             {"pp_name": "dropout", "room": 0.0, "ws":0.1},
-            {"pp_name": "plot"},
             {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":true},
-            {"pp_name": "plot"},
             {"pp_name": "relabel_nodes", "mapping": false, "copy":true},
             {"pp_name": "remove_self_loops"},
             {"pp_name": "unfreeze"}

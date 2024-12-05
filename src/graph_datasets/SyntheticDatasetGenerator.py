@@ -64,8 +64,8 @@ class SyntheticDatasetGenerator():
                     working_dict["min"] = np.concatenate([working_dict["min"], -np.array(playground_size)/2 - max_building_size])
                     working_dict["max"] = np.concatenate([working_dict["max"], np.array(playground_size)/2 + max_building_size])
                 elif feature_keys[0] == "length":
-                    working_dict["min"] = np.concatenate([working_dict["min"], [min_building_size]])
-                    working_dict["max"] = np.concatenate([working_dict["max"], [max_building_size]]) #, [np.log(max_room_entry_size*max_room_center_distances)]])
+                    working_dict["min"] = np.concatenate([working_dict["min"], [0]])
+                    working_dict["max"] = np.concatenate([working_dict["max"], [max_building_size*1.2]]) #, [np.log(max_room_entry_size*max_room_center_distances)]])
                 elif feature_keys[0] == "normals":
                     working_dict["min"] = np.concatenate([working_dict["min"],[-1,-1]])
                     working_dict["max"] = np.concatenate([working_dict["max"],[1,1]])
@@ -76,16 +76,16 @@ class SyntheticDatasetGenerator():
                     working_dict["max"] = np.concatenate([working_dict["max"],np.array([max_building_size,max_building_size])])
                 elif feature_keys[0] == "min_dist":
                     working_dict["min"] = np.concatenate([working_dict["min"],[0]])
-                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size]])  #,[np.log(max(playground_size)+1)]])
+                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size*1.5]])  #,[np.log(max(playground_size)+1)]])
                 elif feature_keys[0] == "centroids_distance":
                     working_dict["min"] = np.concatenate([working_dict["min"],[0]])
-                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size]]) 
+                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size*1.5]]) 
                 elif feature_keys[0] == "angle_centroid_degrees":
-                    working_dict["min"] = np.concatenate([working_dict["min"],[-180]])
-                    working_dict["max"] = np.concatenate([working_dict["max"],[180]]) 
+                    working_dict["min"] = np.concatenate([working_dict["min"],[0]])
+                    working_dict["max"] = np.concatenate([working_dict["max"],[360]]) 
                 elif feature_keys[0] == "relative_ang_normal":
-                    working_dict["min"] = np.concatenate([working_dict["min"],[-180]])
-                    working_dict["max"] = np.concatenate([working_dict["max"],[180]]) 
+                    working_dict["min"] = np.concatenate([working_dict["min"],[0]])
+                    working_dict["max"] = np.concatenate([working_dict["max"],[360]]) 
 
             if len(feature_keys) > 1:
                 working_dict = add_features(type, feature_keys[1:], working_dict)
@@ -491,11 +491,15 @@ class SyntheticDatasetGenerator():
                     target_node_type = working_graph.get_attributes_of_node(target_node_id)["type"]
                     if (source_node_type, target_node_type) in self.settings["initial_features"]["edges"]:
                         min_dist = [np.linalg.norm(working_graph.get_attributes_of_node(source_node_id)["center"] - working_graph.get_attributes_of_node(target_node_id)["center"])]
-                            # rel_pos_1 = relative_positions(working_graph.get_attributes_of_node(source_node_id),working_graph.get_attributes_of_node(target_node_id))
                         rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(working_graph.get_attributes_of_node(source_node_id),working_graph.get_attributes_of_node(target_node_id))
                         feature_dict = {"min_dist": min_dist, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
-                        embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", feature_dict)
-                        [x_straight, x_inversed] = embedding_builder.build_embedding(self.settings["initial_features"]["edges"][tuple(["ws","ws"])])
+                        embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", copy.deepcopy(feature_dict))
+                        x_straight = embedding_builder.build_embedding(self.settings["initial_features"]["edges"][tuple(["ws","ws"])])
+                    
+                        rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(working_graph.get_attributes_of_node(target_node_id),working_graph.get_attributes_of_node(source_node_id))
+                        feature_dict = {"min_dist": min_dist, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
+                        embedding_builder.update_feature_dictionary(feature_dict)
+                        x_inversed = embedding_builder.build_embedding(self.settings["initial_features"]["edges"][tuple(["ws","ws"])])
                     else:
                         [x_straight, x_inversed] = [[],[]]
                     working_graph.update_edge_attrs((source_node_id, target_node_id), {"label":possible_edge_types.index(edge_attrs["type"])+1, "x":x_straight, "viz_feat" : 'green', "type" : new_edge_type, "linewidth":1.0, "alpha":0.5})
@@ -557,8 +561,14 @@ class SyntheticDatasetGenerator():
                             distance = [np.linalg.norm(working_graph.get_attributes_of_node(base_node_id)["center"] - working_graph.get_attributes_of_node(target_node_id)["center"])]
                             rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(working_graph.get_attributes_of_node(base_node_id),working_graph.get_attributes_of_node(target_node_id))
                             feature_dict = {"min_dist": distance, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
-                            embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", feature_dict)
-                            [x_straight, x_inversed] = embedding_builder.build_embedding(self.settings["initial_features"]["edges"][tuple(["ws","ws"])])
+                            embedding_builder = NodeEdgeFeatureEmbeddingBuildier("edge", copy.deepcopy(feature_dict))
+                            x_straight = embedding_builder.build_embedding(self.settings["initial_features"]["edges"][tuple(["ws","ws"])])
+                            
+                            rel_pos_1, centroids_distance, angle_centroid_degrees, angle_normals = relative_geometry(working_graph.get_attributes_of_node(target_node_id),working_graph.get_attributes_of_node(base_node_id))
+                            feature_dict = {"min_dist": distance, "relative_pos": rel_pos_1[:2], "centroids_distance": centroids_distance, "angle_centroid_degrees": angle_centroid_degrees, "relative_ang_normal": angle_normals}
+                            embedding_builder.update_feature_dictionary(feature_dict)
+                            x_inversed = embedding_builder.build_embedding(self.settings["initial_features"]["edges"][tuple(["ws","ws"])])
+                        
                         else:
                             [x_straight, x_inversed] = [[],[]]
 
