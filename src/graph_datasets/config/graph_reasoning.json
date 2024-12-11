@@ -1,12 +1,12 @@
 {   
     "base_graphs": {
-        "grid_dims" : [[70,70],[70,70]],
+        "grid_dims" : [[70,120],[70,120]],
         "playground_size": [100, 100],
-        "max_room_entry_size" : [60,60],
+        "max_room_entry_size" : [100,100],
         "min_room_entry_size" : [10,10],
         "room_center_distances" : [0.1,0.1],
         "wall_thickness" : [0.16,0.2],
-        "n_buildings" : 20
+        "n_buildings" : 100
     },
     "noise":{
         "global":{
@@ -35,7 +35,7 @@
     "postprocess": {
         "training": [
             {"pp_name": "merge_room", "ratio": 0.5},
-            {"pp_name": "dropout", "room": 0.0, "ws":0.0},
+            {"pp_name": "dropout", "room": 0.2, "ws":0.0},
             {"pp_name": "filter", "nodes": ["ws"], "edges":[
                 [
                     "ws",
@@ -55,8 +55,9 @@
             {"pp_name": "unfreeze"}
         ],
         "final": [
-            {"pp_name": "remove_all_edges"},
-            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false}
+            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false},
+            {"pp_name": "remove_self_loops"}
+            
         ]
     },
     "initial_features": {
@@ -64,7 +65,7 @@
             "ws": ["length"]
         },
         "edges": {
-            "[ws,ws]": ["min_dist", "centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
+            "[ws,ws]": ["centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
         }
     }
 }

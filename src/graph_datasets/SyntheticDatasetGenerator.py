@@ -49,23 +49,22 @@ class SyntheticDatasetGenerator():
         return new_settings
 
     def define_norm_limits(self):
-        playground_size = self.settings["base_graphs"]["playground_size"]
-        max_room_entry_size = self.settings["base_graphs"]["max_room_entry_size"][-1]
-        min_room_entry_size = self.settings["base_graphs"]["min_room_entry_size"][0]
+        grid_dims = self.settings["base_graphs"]["grid_dims"]
+        max_grid_dims = max(grid_dims[0][1],grid_dims[1][1])
         max_room_center_distances = self.settings["base_graphs"]["room_center_distances"][-1]
-        min_room_center_distances = self.settings["base_graphs"]["room_center_distances"][0]
+        max_room_entry_size = self.settings["base_graphs"]["max_room_entry_size"][-1]
         init_feat_keys = self.settings["initial_features"]
-        max_building_size = max_room_entry_size*max_room_center_distances
-        min_building_size = min_room_entry_size*min_room_center_distances
+        max_building_size = max_grid_dims*max_room_center_distances
+        max_room_size = max_room_entry_size*max_room_center_distances
 
         def add_features(type, feature_keys, working_dict):
             if type == "node":
                 if feature_keys[0] == "centroid":
-                    working_dict["min"] = np.concatenate([working_dict["min"], -np.array(playground_size)/2 - max_building_size])
-                    working_dict["max"] = np.concatenate([working_dict["max"], np.array(playground_size)/2 + max_building_size])
+                    working_dict["min"] = np.concatenate([working_dict["min"], 0])
+                    working_dict["max"] = np.concatenate([working_dict["max"], max_building_size])
                 elif feature_keys[0] == "length":
                     working_dict["min"] = np.concatenate([working_dict["min"], [0]])
-                    working_dict["max"] = np.concatenate([working_dict["max"], [max_building_size*1.2]]) #, [np.log(max_room_entry_size*max_room_center_distances)]])
+                    working_dict["max"] = np.concatenate([working_dict["max"], [max_room_size]]) #, [np.log(max_room_entry_size*max_room_center_distances)]])
                 elif feature_keys[0] == "normals":
                     working_dict["min"] = np.concatenate([working_dict["min"],[-1,-1]])
                     working_dict["max"] = np.concatenate([working_dict["max"],[1,1]])
@@ -76,10 +75,10 @@ class SyntheticDatasetGenerator():
                     working_dict["max"] = np.concatenate([working_dict["max"],np.array([max_building_size,max_building_size])])
                 elif feature_keys[0] == "min_dist":
                     working_dict["min"] = np.concatenate([working_dict["min"],[0]])
-                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size*1.5]])  #,[np.log(max(playground_size)+1)]])
+                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size]])  #,[np.log(max(playground_size)+1)]])
                 elif feature_keys[0] == "centroids_distance":
                     working_dict["min"] = np.concatenate([working_dict["min"],[0]])
-                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size*1.5]]) 
+                    working_dict["max"] = np.concatenate([working_dict["max"],[max_building_size]]) 
                 elif feature_keys[0] == "angle_centroid_degrees":
                     working_dict["min"] = np.concatenate([working_dict["min"],[0]])
                     working_dict["max"] = np.concatenate([working_dict["max"],[360]]) 
@@ -585,7 +584,7 @@ class SyntheticDatasetGenerator():
                             new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x_inversed, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
                             # new_edges.append((target_node_id, base_node_id,{"type": new_edge_type, "label": 0, "x":x_2, "viz_feat" : 'r', "linewidth":1.0, "alpha":0.5}))
                 working_graph.unfreeze()
-                working_graph.add_edges(new_edges)                
+                working_graph.add_edges(new_edges)
 
             ### Include random edges
             #{"pp_name": "K_rand_neigh", "max": 0, "types":["ws"], "use_gt":true}

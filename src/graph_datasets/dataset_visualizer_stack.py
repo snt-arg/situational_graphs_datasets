@@ -7,6 +7,7 @@ import json, os, time, sys
 from graph_datasets.config import get_config as get_datasets_config
 from graph_reasoning.config import get_config as get_reasoning_config
 synteticdataset_settings = get_datasets_config("graph_reasoning")
+synteticdataset_settings["base_graphs"]["n_buildings"] = 10
 graph_reasoning_settings = get_reasoning_config(f"same_RoomWall_training")
 
 dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = None, dataset_name = "test")

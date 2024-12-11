@@ -33,25 +33,20 @@
         "test" : 0.1
     },
     "postprocess": {
-        "training": {
-            "use_gt": true,
-            "K_nearest_max": 15,
-            "K_nearest_types" : ["ws"],
-            "K_random_max": 0,
-            "K_random_types" : ["ws"],
-            "ws_dropout": 0.1,
-            "directed" : true,
-            "room_merge_ratio" : 1.0
-        },
-        "final": {
-            "use_gt": false,
-            "K_nearest_max": 15,
-            "K_nearest_types" : ["ws"],
-            "K_random_max": 0,
-            "K_random_types" : ["ws"],
-            "ws_dropout": 0.0,
-            "directed" : true
-        }
+        "training": [
+            {"pp_name": "merge_room", "ratio": 0.5},
+            {"pp_name": "add_gt"},
+            {"pp_name": "dropout", "room": 0.0, "ws":0.0},
+            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":true},
+            {"pp_name": "relabel_nodes", "mapping": false, "copy":true},
+            {"pp_name": "remove_self_loops"},
+            {"pp_name": "unfreeze"}
+        ],
+        "final": [
+            {"pp_name": "remove_all_edges"},
+            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false},
+            {"pp_name": "remove_self_loops"}
+        ]
     },
     "initial_features": {
         "nodes": {
