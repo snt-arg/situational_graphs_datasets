@@ -532,11 +532,13 @@ class SyntheticDatasetGenerator():
                                 split_limits.append(init_limit + ws_direction*internal_split_lengths[i])
                             split_limits.append(limits[1])
                             
+                            new_node_IDs = []
                             
                             for i in range(n_splits + 1):
                                 new_limits = [split_limits[i], split_limits[i+1]]
 
                                 new_node_ID = max(working_graph.get_nodes_ids()) + 1
+                                new_node_IDs.append(new_node_ID)
 
                                 new_ws_attrs = copy.deepcopy(ws_attrs)
                                 new_ws_attrs["center"] = (new_limits[0] + new_limits[1]) / 2
@@ -556,7 +558,7 @@ class SyntheticDatasetGenerator():
                                         working_graph.add_edges([(neigh_wall_ID, new_node_ID, {"type": "ws_belongs_wall", "viz_feat": "m", "linewidth":1.0, "alpha":0.5})])
                                         working_graph.add_edges([(new_node_ID, neigh_wall_ID, {"type": "ws_belongs_wall", "viz_feat": "m", "linewidth":1.0, "alpha":0.5})])
 
-                                for ws_same_room_ID in working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types("ws_same_room").filterout_unparented_nodes().get_nodes_ids():
+                                for ws_same_room_ID in list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types("ws_same_room").filterout_unparented_nodes().get_nodes_ids()) + new_node_IDs[:-1]:
                                     if ws_same_room_ID != ws_node_id:
                                         working_graph.add_edges([(ws_same_room_ID, new_node_ID, {"type": "ws_same_room", "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
                                         working_graph.add_edges([(new_node_ID, ws_same_room_ID, {"type": "ws_same_room", "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])

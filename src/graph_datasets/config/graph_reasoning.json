@@ -48,7 +48,9 @@
                     "ws"
                 ]
             ]},
+            {"pp_name": "plot", "fig_name": "test 1"},
             {"pp_name": "add_gt"},
+            {"pp_name": "plot", "fig_name": "test 2"},
             {"pp_name": "dropout", "room": 0.0, "ws":0.1},
             {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":true},
             {"pp_name": "relabel_nodes", "mapping": false, "copy":true},
