@@ -10,6 +10,7 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False):
     for node_data in nodes_data:
         if node_data[1]["viz_type"] == "Point":
             ax.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"])
+            # print(f'dbg node_data[1] {node_data[1]}')
 
         elif node_data[1]["viz_type"] == "Line":
             viz_data = np.array(node_data[1]["viz_data"])
