@@ -22,11 +22,11 @@ class NodeEdgeFeatureEmbeddingBuildier():
         
         def add_ws_node_features(feature_keys, feats):
             if feature_keys[0] == "centroid":
-                feats = np.concatenate([feats, self.feature_dictionary["ws_center"][:2]]).astype(np.float32)
+                feats = np.concatenate([feats, self.feature_dictionary["center"][:2]]).astype(np.float32)
             elif feature_keys[0] == "length":
-                feats = np.concatenate([feats, [self.feature_dictionary["ws_length"]]]).astype(np.float32)   #, [np.log(ws_length)]]).astype(np.float32)
+                feats = np.concatenate([feats, [self.feature_dictionary["length"]]]).astype(np.float32)   #, [np.log(ws_length)]]).astype(np.float32)
             elif feature_keys[0] == "normals":
-                feats = np.concatenate([feats, self.feature_dictionary["ws_normal"][:2]]).astype(np.float32)
+                feats = np.concatenate([feats, self.feature_dictionary["normal"][:2]]).astype(np.float32)
             if len(feature_keys) > 1:
                 feats = add_ws_node_features(feature_keys[1:], feats)
             return feats
