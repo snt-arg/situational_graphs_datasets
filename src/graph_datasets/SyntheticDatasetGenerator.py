@@ -434,7 +434,11 @@ class SyntheticDatasetGenerator():
                     ws_node_ids = list(working_graph.filter_graph_by_node_types(["ws"]).get_nodes_ids())
                     node_ids_selected = []
                     for ws_node_id in ws_node_ids:
-                        same_room_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types(["ws_belong_room"]).filterout_unparented_nodes().get_nodes_ids())
+                        # visualize_nxgraph(working_graph.get_neighbourhood_graph(ws_node_id), "test", visualize_alone=True)
+                        # for e in working_graph.get_neighbourhood_graph(ws_node_id).get_attributes_of_all_edges():
+                        #     print(f"dbg e[2][type] {e[2]['type']}")
+                        # visualize_nxgraph(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types(["ws_same_room"]).filterout_unparented_nodes(), "test 2", visualize_alone=True)
+                        same_room_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types(["ws_same_room"]).filterout_unparented_nodes().get_nodes_ids())
                         if len(same_room_ws_node_ids) > 1 and np.random.random_sample() < pp_settings["ws"]:
                             node_ids_selected.append(ws_node_id)
                     working_graph.remove_nodes(node_ids_selected)
@@ -512,10 +516,8 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "ws_partial_occlusion":
                 if pp_settings["ratio"] > 0.:
                     ws_node_ids = list(working_graph.filter_graph_by_node_types(["ws"]).get_nodes_ids())
-                    print(f"dbg flag 1 ")
                     for ws_node_id in ws_node_ids:
                         if np.random.random_sample() < pp_settings["ratio"]:
-                            print(f"dbg flag 2")
                             ws_attrs = working_graph.get_attributes_of_node(ws_node_id)
                             center = ws_attrs["center"]
                             length = ws_attrs["length"]
@@ -576,7 +578,7 @@ class SyntheticDatasetGenerator():
                             for i in range(len(internal_split_lengths_masked) + 1):
                                 new_limits = [split_limits[i], split_limits[i+1]]
 
-                                new_node_ID = max(working_graph.get_nodes_ids()) + 1
+                                new_node_ID = max(working_graph.get_nodes_ids()) + i + 1
                                 new_node_IDs.append(new_node_ID)
 
                                 new_ws_attrs = copy.deepcopy(ws_attrs)
@@ -613,9 +615,10 @@ class SyntheticDatasetGenerator():
 
             elif pp_settings["pp_name"] == "merge_room":
                 working_graph = self.merge_rooms(pp_settings, working_graph)
-
             elif pp_settings["pp_name"] == "plot":
-                visualize_nxgraph(working_graph, pp_settings["fig_name"], visualize_alone=True)
+                fig = visualize_nxgraph(working_graph, pp_settings["fig_name"], visualize_alone=pp_settings["visualize_alone"])
+                if pp_settings["save_path"]:
+                    fig.savefig(pp_settings["save_path"], bbox_inches='tight')
             elif pp_settings["pp_name"] == "remove_self_loops":
                 working_graph.remove_self_loops()
             elif pp_settings["pp_name"] == "relabel_nodes":
