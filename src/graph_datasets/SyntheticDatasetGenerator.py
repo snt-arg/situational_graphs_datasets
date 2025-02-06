@@ -113,7 +113,7 @@ class SyntheticDatasetGenerator():
         def process_building(_):
             base_matrix = self.generate_base_matrix()
             # original_graph = self.generate_graph_from_base_matrix(base_matrix, add_noise=False)
-            original_graph = None
+            original_graph = self.generate_graph_from_base_matrix(base_matrix, add_noise=False)
             noisy_graph = self.generate_graph_from_base_matrix(base_matrix, add_noise=True)
             return original_graph, noisy_graph
 
