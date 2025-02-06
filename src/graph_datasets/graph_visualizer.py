@@ -50,3 +50,43 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False):
     else:
         plt.close(fig)
     return fig
+
+def visualize_nxgraph_pair(graph1, graph2, image_name, visualize_alone=False):
+    fig = plt.figure(image_name)
+    fig.clf()
+    ax1 = fig.add_subplot(121)
+    ax2 = fig.add_subplot(122)
+    nodes_data1 = graph1.get_attributes_of_all_nodes()
+    nodes_data2 = graph2.get_attributes_of_all_nodes()
+    for node_data in nodes_data1:
+        if node_data[1]["viz_type"] == "Point":
+            ax1.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"])
+        elif node_data[1]["viz_type"] == "Line":
+            viz_data = np.array(node_data[1]["viz_data"])
+            ax1.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz_feat"])
+    for node_data in nodes_data2:
+        if node_data[1]["viz_type"] == "Point":
+            ax2.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"])
+        elif node_data[1]["viz_type"] == "Line":
+            viz_data = np.array(node_data[1]["viz_data"])
+            ax2.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz_feat"])
+    edges_data1 = graph1.get_attributes_of_all_edges()
+    edges_data2 = graph2.get_attributes_of_all_edges()
+    for edge_data in edges_data1:
+        points = np.array([nodes_data1[edge_data[0]]["center"], nodes_data1[edge_data[1]]["center"]])
+        ax1.plot(points[:,0], points[:,1], edge_data[2]["viz_feat"])
+    for edge_data in edges_data2:
+        points = np.array([nodes_data2[edge_data[0]]["center"], nodes_data2[edge_data[1]]["center"]])
+        ax2.plot(points[:,0], points[:,1], edge_data[2]["viz_feat"])
+    
+    ax1.set_aspect('equal', adjustable='datalim')
+    ax2.set_aspect('equal', adjustable='datalim')
+    
+    plt.draw()
+    
+    if visualize_alone:
+        plt.show()
+    else:
+        plt.close(fig)
+    
+    return fig

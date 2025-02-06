@@ -39,6 +39,7 @@ class SyntheticDatasetGenerator():
         self.logger = logger
         self.report_path = report_path
         self.dataset_name = dataset_name
+        self.dataset_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), self.report_path, self.dataset_name)
         self.define_norm_limits()
 
     def correct_json_initfeat_keys(self, settings):
@@ -900,16 +901,27 @@ class SyntheticDatasetGenerator():
             hdataset[key] = hdataset_key
         return hdataset
 
-    # def save_to_files(self):
-    #     dataset_dir = graph_datasets_dir + f"/{self.dataset_name}"
-    #     if not os.path.exists(dataset_dir):
-    #         os.makedirs(dataset_dir)
-    #     for dataset_tag in self.graphs.keys():
-    #         dataset_tag_dir = dataset_dir + f"/{dataset_tag}"
-    #         if not os.path.exists(dataset_tag_dir):
-    #             os.makedirs(dataset_tag_dir)
-    #         for i, data in enumerate(self.graphs[dataset_tag]):
-    #             data.to_file(dataset_tag_dir + f"/{i}.pt")    
+    def save_to_files(self):
+        dataset_dir = self.dataset_path
+        if not os.path.exists(dataset_dir):
+            os.makedirs(dataset_dir)
+        for dataset_tag in self.graphs.keys():
+            dataset_tag_dir = dataset_dir + f"/{dataset_tag}"
+            if not os.path.exists(dataset_tag_dir):
+                os.makedirs(dataset_tag_dir)
+            for i, data in enumerate(self.graphs[dataset_tag]):
+                data.to_file(dataset_tag_dir + f"/{i}.pt")    
+                
+    # save graphs to files divided by training_split and dataset_tag 
+    def save_to_files2(self):
+        if not os.path.exists(self.dataset_path):
+            os.makedirs(self.dataset_path)
+        for dataset_tag in self.graphs.keys():
+            dataset_tag_dir = self.dataset_path + f"/{dataset_tag}"
+            if not os.path.exists(dataset_tag_dir):
+                os.makedirs(dataset_tag_dir)
+            for i, data in enumerate(self.graphs[dataset_tag]):
+                data.to_json(dataset_tag_dir + f"/{i}.pt")
 
     # def merge_graphs_type_as_x(self, nxdatset):
     #     # Initialize lists for concatenated features
