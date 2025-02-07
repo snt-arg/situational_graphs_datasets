@@ -911,6 +911,13 @@ class SyntheticDatasetGenerator():
                 os.makedirs(dataset_tag_dir)
             for i, data in enumerate(self.graphs[dataset_tag]):
                 data.serialize(dataset_tag_dir + f"/{i}.pt")    
+    
+    def deserialize_dataset(self):
+        dataset_dir = self.dataset_path
+        for dataset_tag in self.graphs.keys():
+            dataset_tag_dir = dataset_dir + f"/{dataset_tag}"
+            for i in range(len(self.graphs[dataset_tag])):
+                self.graphs[dataset_tag][i].deserialize(dataset_tag_dir + f"/{i}.pt")
                 
     # print all the graphs inside the dataset
     def print_dataset(self):

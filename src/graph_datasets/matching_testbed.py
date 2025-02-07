@@ -27,3 +27,7 @@ dataset_generator.serialize_dataset()
 
 for i in range(len(s_graphs_list)):
     gv.visualize_nxgraph_pair(a_graphs_list[i], s_graphs_list[i], f"graph_{i}", visualize_alone=True)
+
+dataset_generator.deserialize_dataset()
+for i in range(len(s_graphs_list)):
+    gv.visualize_nxgraph_pair(a_graphs_list[i], s_graphs_list[i], f"graph_{i}", visualize_alone=True)   
