@@ -10,7 +10,7 @@ dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger =
 dataset_generator.create_dataset()
 a_graphs_list = dataset_generator.graphs["original"]
 s_graphs_list = dataset_generator.graphs["noise"]
-dataset_generator.save_to_files()
+dataset_generator.serialize_dataset()
 # filtered_nxdataset = dataset_generator.get_filtered_datset(settings_hdata["nodes"],settings_hdata["edges"])["noise"]
 # extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["noise"], "training", "training")
 # normalized_nxdatset = dataset_generator.normalize_features_nxdatset(extended_nxdatset)
