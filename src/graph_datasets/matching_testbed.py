@@ -10,7 +10,7 @@ dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger =
 dataset_generator.create_dataset()
 a_graphs_list = dataset_generator.graphs["original"]
 s_graphs_list = dataset_generator.graphs["noise"]
-dataset_generator.serialize_dataset()
+
 # filtered_nxdataset = dataset_generator.get_filtered_datset(settings_hdata["nodes"],settings_hdata["edges"])["noise"]
 # extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["noise"], "training", "training")
 # normalized_nxdatset = dataset_generator.normalize_features_nxdatset(extended_nxdatset)
@@ -25,6 +25,7 @@ dataset_generator.serialize_dataset()
 
 # all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
 
+dataset_generator.serialize_dataset()
 for i in range(len(s_graphs_list)):
     gv.visualize_nxgraph_pair(a_graphs_list[i], s_graphs_list[i], f"graph_{i}", visualize_alone=True)
 
