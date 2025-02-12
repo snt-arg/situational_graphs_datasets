@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 import sys
 import os
@@ -41,6 +42,8 @@ class SyntheticDatasetGenerator():
         self.dataset_name = dataset_name
         self.dataset_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), self.report_path, self.dataset_name)
         self.define_norm_limits()
+        self.graphs = {"original":[],"noise":[],"views":[],"extended":[]}
+        self.max_n_rooms = 0
 
     def correct_json_initfeat_keys(self, settings):
         new_settings = copy.deepcopy(settings)
@@ -107,9 +110,6 @@ class SyntheticDatasetGenerator():
     def create_dataset(self):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Generating Syntetic Dataset" + Fore.WHITE)
         n_buildings = self.settings["base_graphs"]["n_buildings"]
-
-        self.graphs = {"original":[],"noise":[],"views":[]}
-        self.max_n_rooms = 0
 
         def process_building(_):
             base_matrix = self.generate_base_matrix()
@@ -645,7 +645,8 @@ class SyntheticDatasetGenerator():
         val_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["val"]-self.settings["training_split"]["test"]))
         test_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["test"]))
         extended_nxdatset = {"train" : new_nxdataset[:val_start_index], "val" : new_nxdataset[val_start_index:test_start_index],"test" : new_nxdataset[test_start_index:-1]}
-
+        self.graphs["extended"] = new_nxdataset
+        
         return extended_nxdatset
     
 
@@ -902,23 +903,32 @@ class SyntheticDatasetGenerator():
         return hdataset
 
     def serialize_dataset(self):
-        dataset_dir = self.dataset_path
-        if not os.path.exists(dataset_dir):
-            os.makedirs(dataset_dir)
-        for dataset_tag in self.graphs.keys():
-            dataset_tag_dir = dataset_dir + f"/{dataset_tag}"
-            if not os.path.exists(dataset_tag_dir):
-                os.makedirs(dataset_tag_dir)
-            for i, data in enumerate(self.graphs[dataset_tag]):
-                data.serialize(dataset_tag_dir + f"/{i}.pt")    
+        dataset_dir = Path(self.dataset_path)
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        for dataset_tag, graph_list in self.graphs.items():
+            dataset_tag_dir = dataset_dir / dataset_tag
+            dataset_tag_dir.mkdir(parents=True, exist_ok=True)
+
+            for i, graph in enumerate(graph_list):
+                graph.serialize(dataset_tag_dir / f"{i}.pt")
+
     
     def deserialize_dataset(self):
-        dataset_dir = self.dataset_path
-        for dataset_tag in self.graphs.keys():
-            dataset_tag_dir = dataset_dir + f"/{dataset_tag}"
-            for i in range(len(self.graphs[dataset_tag])):
-                self.graphs[dataset_tag][i].deserialize(dataset_tag_dir + f"/{i}.pt")
-                
+        self.graphs["original"].clear()
+        self.graphs["noise"].clear()
+        self.graphs["extended"].clear()
+        
+        dataset_dir = Path(self.dataset_path) 
+        
+        for dataset_tag, graph_list in self.graphs.items():
+            dataset_tag_dir = dataset_dir / dataset_tag 
+
+            for file in sorted(dataset_tag_dir.glob("*.pt")):
+                graph = GraphWrapper()  
+                graph.deserialize(str(file)) 
+                graph_list.append(graph)
+
     # print all the graphs inside the dataset
     def print_dataset(self):
         for dataset_tag in self.graphs.keys():

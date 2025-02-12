@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import networkx as nx
 
 
 def visualize_nxgraph(graph, image_name, visualize_alone=False):
@@ -51,13 +52,26 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False):
         plt.close(fig)
     return fig
 
-def visualize_nxgraph_pair(graph1, graph2, image_name, visualize_alone=False):
+def visualize_nxgraph_pair(graph1, graph2, image_name, visualize_alone=False, g1digraph=False, g2digraph=False):
     fig = plt.figure(image_name)
     fig.clf()
     ax1 = fig.add_subplot(121)
     ax2 = fig.add_subplot(122)
-    nodes_data1 = graph1.get_attributes_of_all_nodes()
-    nodes_data2 = graph2.get_attributes_of_all_nodes()
+    
+    # get nodes and edges data
+    if g1digraph:
+        nodes_data1 = graph1.nodes(data=True)
+        edges_data1 = graph1.edges(data=True)
+    else:
+        nodes_data1 = graph1.get_attributes_of_all_nodes()
+        edges_data1 = graph1.get_attributes_of_all_edges()
+    if g2digraph:
+        nodes_data2 = graph2.nodes(data=True)
+        edges_data2 = graph2.edges(data=True)
+    else:
+        nodes_data2 = graph2.get_attributes_of_all_nodes()
+        edges_data2 = graph2.get_attributes_of_all_edges()
+          
     for node_data in nodes_data1:
         if node_data[1]["viz_type"] == "Point":
             ax1.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"])
@@ -70,8 +84,7 @@ def visualize_nxgraph_pair(graph1, graph2, image_name, visualize_alone=False):
         elif node_data[1]["viz_type"] == "Line":
             viz_data = np.array(node_data[1]["viz_data"])
             ax2.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz_feat"])
-    edges_data1 = graph1.get_attributes_of_all_edges()
-    edges_data2 = graph2.get_attributes_of_all_edges()
+    
     for edge_data in edges_data1:
         points = np.array([nodes_data1[edge_data[0]]["center"], nodes_data1[edge_data[1]]["center"]])
         ax1.plot(points[:,0], points[:,1], edge_data[2]["viz_feat"])
@@ -90,3 +103,9 @@ def visualize_nxgraph_pair(graph1, graph2, image_name, visualize_alone=False):
         plt.close(fig)
     
     return fig
+
+def visualize_digraph(graph, image_name):
+    plt.figure(figsize=(8, 4))
+    plt.title(image_name)
+    nx.draw_networkx(graph)
+    plt.show()
