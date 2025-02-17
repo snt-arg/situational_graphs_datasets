@@ -36,6 +36,7 @@
         "training": [
             {"pp_name": "merge_room", "ratio": 0.5},
             {"pp_name": "dropout", "room": 0.2, "ws":0.0},
+            {"pp_name": "ws_split", "ratio": 0.25},
             {"pp_name": "filter", "nodes": ["ws"], "edges":[
                 [
                     "ws",

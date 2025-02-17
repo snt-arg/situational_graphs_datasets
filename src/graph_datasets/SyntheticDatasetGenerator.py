@@ -118,7 +118,8 @@ class SyntheticDatasetGenerator():
             return original_graph, noisy_graph
 
         # Using ThreadPoolExecutor for parallel processing
-        with ThreadPoolExecutor(max_workers=1) as executor:
+        num_workers = os.cpu_count()  # Or some fraction of it
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
             futures = {executor.submit(process_building, i): i for i in range(n_buildings)}
             for future in tqdm.tqdm(as_completed(futures), total=n_buildings, colour="green"):
                 original_graph, noisy_graph = future.result()
@@ -439,7 +440,8 @@ class SyntheticDatasetGenerator():
                         #     print(f"dbg e[2][type] {e[2]['type']}")
                         # visualize_nxgraph(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types(["ws_same_room"]).filterout_unparented_nodes(), "test 2", visualize_alone=True)
                         same_room_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types(["ws_same_room"]).filterout_unparented_nodes().get_nodes_ids())
-                        if len(same_room_ws_node_ids) > 1 and np.random.random_sample() < pp_settings["ws"]:
+                        left_in_same_room_ws_node_ids = list(set(same_room_ws_node_ids) - set(node_ids_selected))
+                        if len(left_in_same_room_ws_node_ids) > 1 and np.random.random_sample() < pp_settings["ws"]:
                             node_ids_selected.append(ws_node_id)
                     working_graph.remove_nodes(node_ids_selected)
 
@@ -447,7 +449,10 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "K_near_neigh":
                 node_ids = list(working_graph.filter_graph_by_node_types(pp_settings["types"]).get_nodes_ids())
                 centers = np.array([working_graph.get_attributes_of_node(node_id)["center"] for node_id in node_ids])
-                kdt = KDTree(centers, leaf_size=30, metric='euclidean')
+                try:
+                    kdt = KDTree(centers, leaf_size=30, metric='euclidean')
+                except:
+                    visualize_nxgraph(working_graph, "trial", visualize_alone=True)
                 k = len(centers) if len(centers) <= pp_settings["max"]+1 else pp_settings["max"]+1
                 query = kdt.query(centers, k=k, return_distance=False)
                 query = np.array(list((map(lambda e: list(map(node_ids.__getitem__, e)), query))))

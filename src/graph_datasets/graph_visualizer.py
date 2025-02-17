@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def visualize_nxgraph(graph, image_name, visualize_alone=False):
+def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids=True):
     nodes_data = graph.get_attributes_of_all_nodes()
     fig = plt.figure(image_name)
     # fig.clf()
@@ -10,6 +10,7 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False):
     for node_data in nodes_data:
         if node_data[1]["viz_type"] == "Point":
             ax.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"])
+            tag_center = node_data[1]["viz_data"]
             # print(f'dbg node_data[1] {node_data[1]}')
 
         elif node_data[1]["viz_type"] == "Line":
@@ -20,6 +21,10 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False):
 
             norm_line = np.stack([node_data[1]["center"], node_data[1]["center"] + node_data[1]["normal"]/4])
             ax.plot(norm_line[:,0], norm_line[:,1], "b", linewidth=linewidth)
+            tag_center = np.array(node_data[1]["center"]) + np.array(node_data[1]["normal"]) * 0.5
+
+        if include_node_ids:
+            plt.text(tag_center[0], tag_center[1], str(node_data[0]), fontsize=12, color='black')
 
     edges_data = graph.get_attributes_of_all_edges()
     for edge_data in edges_data:

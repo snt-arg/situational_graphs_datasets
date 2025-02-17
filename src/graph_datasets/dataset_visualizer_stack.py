@@ -1,5 +1,5 @@
 from SyntheticDatasetGenerator import SyntheticDatasetGenerator
-from graph_visualizer import visualize_nxgraph
+from graph_visualizer_interactive import visualize_nxgraph_interactive
 import matplotlib.pyplot as plt
 import json, os, time, sys
 
@@ -7,7 +7,7 @@ import json, os, time, sys
 from graph_datasets.config import get_config as get_datasets_config
 from graph_reasoning.config import get_config as get_reasoning_config
 synteticdataset_settings = get_datasets_config("graph_reasoning")
-synteticdataset_settings["base_graphs"]["n_buildings"] = 1
+synteticdataset_settings["base_graphs"]["n_buildings"] = 2
 
 dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = None, dataset_name = "test")
 dataset_generator.create_dataset()
@@ -28,5 +28,6 @@ all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_n
 
 for graph in all_dataset:
     # graph.remove_all_edges()
-    visualize_nxgraph(graph, "train data", visualize_alone=True)
+    
+    visualize_nxgraph_interactive(graph, "train data", visualize_alone=True)
     plt.show()
