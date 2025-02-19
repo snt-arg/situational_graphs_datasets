@@ -13,6 +13,7 @@ from torch_geometric.data import Data
 import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+import networkx as nx
 
 import sys
 import os
@@ -336,8 +337,8 @@ class SyntheticDatasetGenerator():
                 filtered_graph = base_graph.filter_graph_by_node_types(node_types)
                 filtered_graph.to_directed()
                 filtered_graph.relabel_nodes() ### TODO What to do when Im dealing with different node types? Check tutorial
-                specific_edge_types = [e[1] for e in full_edge_types]
-                filtered_graph = filtered_graph.filter_graph_by_edge_types(specific_edge_types)
+                # specific_edge_types = [e[1] for e in full_edge_types]
+                filtered_graph = filtered_graph.filter_graph_by_edge_types(full_edge_types)
                 filtered_graph.to_directed()
                 nx_graphs_key.append(filtered_graph)
             nx_graphs[key] = nx_graphs_key
@@ -902,7 +903,7 @@ class SyntheticDatasetGenerator():
             hdataset[key] = hdataset_key
         return hdataset
 
-    def serialize_dataset(self):
+    def serialize_dataset(self, digraphs=False):
         dataset_dir = Path(self.dataset_path)
         dataset_dir.mkdir(parents=True, exist_ok=True)
 
@@ -911,23 +912,38 @@ class SyntheticDatasetGenerator():
             dataset_tag_dir.mkdir(parents=True, exist_ok=True)
 
             for i, graph in enumerate(graph_list):
-                graph.serialize(dataset_tag_dir / f"{i}.pt")
+                if digraphs:
+                    graph.serialize_diGraph(dataset_tag_dir / f"{i}.pt")
+                else:
+                    graph.serialize(dataset_tag_dir / f"{i}.pt")
 
     
-    def deserialize_dataset(self):
+    def deserialize_dataset(self, digraphs=False, path = None, number = -1):
         self.graphs["original"].clear()
         self.graphs["noise"].clear()
         self.graphs["extended"].clear()
         
+        if path is not None:
+            self.dataset_path = path
         dataset_dir = Path(self.dataset_path) 
         
         for dataset_tag, graph_list in self.graphs.items():
             dataset_tag_dir = dataset_dir / dataset_tag 
 
+            counter = 0
             for file in sorted(dataset_tag_dir.glob("*.pt")):
-                graph = GraphWrapper()  
-                graph.deserialize(str(file)) 
-                graph_list.append(graph)
+                if counter == number:
+                    break
+                counter += 1
+                
+                GraphW = GraphWrapper()  
+                if digraphs:
+                    graph = nx.DiGraph()
+                    graph = GraphW.deserialize_diGraph(str(file))
+                    graph_list.append(graph)
+                else:
+                    GraphW.deserialize(str(file)) 
+                    graph_list.append(GraphW)
 
     # print all the graphs inside the dataset
     def print_dataset(self):
