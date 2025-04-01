@@ -35,13 +35,9 @@
     "postprocess": {
         "training": [
             {"pp_name":"msd_adaptation"},
-            {"pp_name": "plot", "visualize_alone": true, "fig_name": "clear", "save_path": false, "msd": true},
             {"pp_name": "add_global_noise", "translation": 0.0, "rotation": 1.0},
-            {"pp_name": "plot", "visualize_alone": true, "fig_name": "global_noise", "save_path": false, "msd": true},
             {"pp_name": "add_local_noise", "translation": 0.0, "rotation": 0.012},
-            {"pp_name": "plot", "visualize_alone": true, "fig_name": "local_noise", "save_path": false, "msd": true},
-            {"pp_name": "dropout", "room": 0.0, "ws":0.3},
-            {"pp_name": "plot", "visualize_alone": true, "fig_name": "ws_dropout", "save_path": false, "msd": true}
+            {"pp_name": "dropout", "room": 0.0, "ws":0.3}
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false},
