@@ -14,10 +14,16 @@ import torch
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import networkx as nx
+import pickle
 
 import sys
 import os
 import ast
+
+msd_dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),"msd") 
+sys.path.append(msd_dataset_dir)
+
+import plot as pl
 
 # graph_wrapper_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_wrapper")
 # sys.path.append(graph_wrapper_dir)
@@ -618,7 +624,10 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "merge_room":
                 working_graph = self.merge_rooms(pp_settings, working_graph)
             elif pp_settings["pp_name"] == "plot":
-                fig = visualize_nxgraph(working_graph, pp_settings["fig_name"], visualize_alone=pp_settings["visualize_alone"])
+                if pp_settings["msd"]: 
+                    pl.plot_a_graph([working_graph.graph],viz_room_normals=True)
+                else:
+                    fig = visualize_nxgraph(working_graph, pp_settings["fig_name"], visualize_alone=pp_settings["visualize_alone"])
                 if pp_settings["save_path"]:
                     fig.savefig(pp_settings["save_path"], bbox_inches='tight')
             elif pp_settings["pp_name"] == "remove_self_loops":
@@ -627,6 +636,80 @@ class SyntheticDatasetGenerator():
                 working_graph.relabel_nodes(mapping = pp_settings["mapping"], copy=pp_settings["copy"])
             elif pp_settings["pp_name"] == "unfreeze":
                 working_graph.unfreeze()
+            elif pp_settings["pp_name"] == "add_global_noise":
+                global_translation = np.array(pp_settings["translation"]) * (np.random.rand(2) - 0.5)
+                global_rotation_angle = np.random.rand(1)[0] * 360 * pp_settings["rotation"]
+                rotation_matrix = R.from_euler("Z", global_rotation_angle, degrees=True)
+
+                for node_id, node_attrs in working_graph.get_attributes_of_all_nodes():
+                    if "center" in node_attrs:
+                        center_3d = np.append(node_attrs["center"][:2] + global_translation, 0)  # Add z-coordinate as 0
+                        new_center_3d = rotation_matrix.apply(center_3d)
+                        node_attrs["center"][:2] = new_center_3d[:2]
+                        node_attrs["viz_data"] = new_center_3d[:2]
+                        
+                    if "normal" in node_attrs:
+                        normal_3d = np.append(node_attrs["normal"][:2], 0)  # Add z-coordinate as 0
+                        new_normal_3d = rotation_matrix.apply(normal_3d)
+                        node_attrs["normal"][:2] = new_normal_3d[:2]
+
+                    if "polygon" in node_attrs:
+                        new_polygon = []
+                        for point in node_attrs["polygon"]:
+                            point_3d = np.append(point[:2] + global_translation, 0)
+                            new_point_3d = rotation_matrix.apply(point_3d)
+                            new_polygon.append(new_point_3d[:2])
+                        node_attrs["polygon"] = new_polygon
+                        
+                    working_graph.update_node_attrs(node_id, node_attrs)
+
+            elif pp_settings["pp_name"] == "add_local_noise":
+                for node_id, node_attrs in working_graph.get_attributes_of_all_nodes():
+                    if "center" in node_attrs and node_attrs["type"] == "ws":
+                        local_translation = np.array(pp_settings["translation"]) * (np.random.rand(2) - 0.5)
+                        local_rotation_angle = (np.random.rand(1)[0] - 0.5) * 360 * pp_settings["rotation"]
+                        rotation_matrix = R.from_euler("Z", local_rotation_angle, degrees=True)
+
+                        new_center_3d = rotation_matrix.apply(np.append(node_attrs["center"][:2] + local_translation, 0))
+                        node_attrs["center"][:2] = new_center_3d[:2]
+                        node_attrs["viz_data"] = new_center_3d[:2]
+
+                        if "normal" in node_attrs:
+                            new_normal_3d = rotation_matrix.apply(np.append(node_attrs["normal"][:2], 0))
+                            node_attrs["normal"][:2] = new_normal_3d[:2]
+
+                        if "polygon" in node_attrs:
+                            new_polygon = []
+                            for point in node_attrs["polygon"]:
+                                point_3d = np.append(point[:2] + local_translation, 0)
+                                new_point_3d = rotation_matrix.apply(point_3d)
+                                new_polygon.append(new_point_3d[:2])
+                            node_attrs["polygon"] = new_polygon
+
+                        working_graph.update_node_attrs(node_id, node_attrs)
+            elif pp_settings["pp_name"] == "msd_adaptation":
+                nodes_to_remove = []
+                for node_id, node_attrs in working_graph.get_attributes_of_all_nodes():
+                    #('1588_3c3b1d6ca8b4b9092480b8c75f9eaa81_wall_6_0',
+                    #  {'geom': [array([ 2.99975914, 10.91433429]), array([-2.85569845,  3.93607167])],
+                    #  'polygon': [(2.9997591397090204, 10.914334285729849), (-2.855698447473351, 3.9360716699222333), (-2.855698447473351, 3.946071669922233), (2.9997591397090204, 10.924334285729849), (2.9997591397090204, 10.914334285729849)],
+                    #  'center': [0.07203034611783465, 7.425202977826041, 1.3], 'normal': array([ 0.76604444, -0.64278761,  0.        ]),
+                    #  'width': 9.109474885550195,
+                    #  'type': 'wall_ws',
+                    #  'category': 9})
+                    if node_attrs["type"] in ["door_ws", "window_ws", "wall_ws", "door", "window", "wall"]:
+                        nodes_to_remove.append(node_id)
+                    if "center" in node_attrs :
+                        # remove z coordinate from center and normal
+                        node_attrs["center"] = node_attrs["center"][:2]
+                        node_attrs["normal"] = node_attrs["normal"][:2]
+                        node_attrs["viz_data"] = node_attrs["center"][:2]
+                        #change field name from width to length
+                        if("width" in node_attrs):
+                            node_attrs["length"] = node_attrs.pop("width")
+                    if "ws" in node_attrs["type"]:
+                        node_attrs["limits"] = [node_attrs["geom"][0], node_attrs["geom"][1]]
+                working_graph.remove_nodes(nodes_to_remove)
 
             return working_graph
 
@@ -944,6 +1027,54 @@ class SyntheticDatasetGenerator():
                 else:
                     GraphW.deserialize(str(file)) 
                     graph_list.append(GraphW)
+
+
+    def save_pickle(object, filename):
+        """Saves a pickled file."""
+        with open(filename, 'wb') as f:
+            pickle.dump(object, f)
+        f.close()
+
+    def load_pickle(filename):
+        """
+        Loads a pickled file.
+        """
+        with open(filename, 'rb') as f:
+            object = pickle.load(f)
+            f.close()
+        return object
+
+
+    def deserialize_and_transform_to_GWraph(self):
+        self.graphs["original"].clear()
+        self.graphs["noise"].clear()
+        self.graphs["extended"].clear()
+
+        dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),"msd/data") 
+
+        dim_name = os.path.join(dataset_dir, "MSD - Some Apartment-Level partials counter.pickle")
+        graph_name = os.path.join(dataset_dir, "MSD - Some Apartment-Level partials.pickle")
+
+        graphs = []
+        dimensions = []
+        # load the dataset
+        with open(dim_name, 'rb') as f:
+            dimensions = pickle.load(f)
+            f.close()
+        
+        with open(graph_name, 'rb') as f:
+            graphs = pickle.load(f)
+            f.close()
+
+        #convert all objects to GraphWrapper and insert them insiede original
+        for i in range(len(dimensions)):
+            for j in range(dimensions[i]):
+                graph = GraphWrapper()
+                graph.graph.add_nodes_from(graphs[i][j].nodes(data=True))
+                graph.graph.add_edges_from(graphs[i][j].edges(data=True))
+                self.graphs["noise"].append(graph)
+                if j == dimensions[i] - 1:
+                    self.graphs["original"].append(graph)
 
     # print all the graphs inside the dataset
     def print_dataset(self):

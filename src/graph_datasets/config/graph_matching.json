@@ -34,18 +34,14 @@
     },
     "postprocess": {
         "training": [
-            {"pp_name": "merge_room", "ratio": 0.5}, 
-            {"pp_name": "dropout", "room": 0.3, "ws":0.0},
-            {"pp_name": "ws_split", "ratio": 0.3},
-
+            {"pp_name":"msd_adaptation"},
+            {"pp_name": "plot", "visualize_alone": true, "fig_name": "clear", "save_path": false, "msd": true},
+            {"pp_name": "add_global_noise", "translation": 0.0, "rotation": 1.0},
+            {"pp_name": "plot", "visualize_alone": true, "fig_name": "global_noise", "save_path": false, "msd": true},
+            {"pp_name": "add_local_noise", "translation": 0.0, "rotation": 0.012},
+            {"pp_name": "plot", "visualize_alone": true, "fig_name": "local_noise", "save_path": false, "msd": true},
             {"pp_name": "dropout", "room": 0.0, "ws":0.3},
-            {"pp_name": "ws_partial_occlusion", "ratio": 0.25},
-            {"pp_name": "add_gt"},
-            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":true},
-            {"pp_name": "relabel_nodes", "mapping": false, "copy":true},
-            {"pp_name": "remove_self_loops"},
-            {"pp_name": "unfreeze"},
-            {"pp_name": "add_x"} 
+            {"pp_name": "plot", "visualize_alone": true, "fig_name": "ws_dropout", "save_path": false, "msd": true}
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false},
