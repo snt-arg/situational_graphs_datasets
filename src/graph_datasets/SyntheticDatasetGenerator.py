@@ -1075,6 +1075,66 @@ class SyntheticDatasetGenerator():
                 self.graphs["noise"].append(graph)
                 if j == dimensions[i] - 1:
                     self.graphs["original"].append(graph)
+        
+        return dimensions
+
+    #serialize graphs back in original an noise folder
+    def serialize_MSD_dataset(self, dimensions):
+        dataset_dir = Path(self.dataset_path)
+        dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        for dataset_tag, graph_list in self.graphs.items():
+            if dataset_tag == "extended":
+                continue
+            dataset_tag_dir = dataset_dir / dataset_tag
+            dataset_tag_dir.mkdir(parents=True, exist_ok=True)
+
+            if dataset_tag == "original":
+                for i, graph in enumerate(graph_list):
+                    graph.serialize_diGraph(dataset_tag_dir / f"{i}.pt")
+            if dataset_tag == "noise":
+                idx = 0  # starting position
+                for group_index, size in enumerate(dimensions, start=1):
+                    for i in range(1, size + 1):
+                        graph = graph_list[idx]
+                        graph.serialize_diGraph(dataset_tag_dir / f"{group_index}_{i}.pt")
+                        idx += 1
+        # serilize in the dataset_dir the dimensions
+        with open(os.path.join(dataset_dir, "dimensions.pickle"), 'wb') as f:
+            pickle.dump(dimensions, f)
+            f.close()
+
+
+    def deserialize_MSD_dataset(self):
+        dataset_dir = Path(self.dataset_path)
+
+        # Load dimensions
+        dimensions_file = dataset_dir / "dimensions.pickle"
+        if not dimensions_file.exists():
+            raise FileNotFoundError(f"Dimensions file not found at {dimensions_file}")
+        with open(dimensions_file, 'rb') as f:
+            dimensions = pickle.load(f)
+
+        # Clear existing graphs
+        self.graphs["original"].clear()
+        self.graphs["noise"].clear()
+        self.graphs["extended"].clear()
+
+        # Deserialize original graphs
+        original_dir = dataset_dir / "original"
+        for file in sorted(original_dir.glob("*.pt")):
+            graph = GraphWrapper()
+            graph.deserialize_diGraph(str(file))
+            self.graphs["original"].append(graph)
+
+        # Deserialize noise graphs
+        noise_dir = dataset_dir / "noise"
+        for file in sorted(noise_dir.glob("*.pt")):
+            graph = GraphWrapper()
+            graph.deserialize_diGraph(str(file))
+            self.graphs["noise"].append(graph)
+
+        return dimensions
 
     # print all the graphs inside the dataset
     def print_dataset(self):
