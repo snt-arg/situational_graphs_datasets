@@ -1084,17 +1084,16 @@ class SyntheticDatasetGenerator():
         dataset_dir.mkdir(parents=True, exist_ok=True)
 
         for dataset_tag, graph_list in self.graphs.items():
-            if dataset_tag == "extended":
-                continue
             dataset_tag_dir = dataset_dir / dataset_tag
             dataset_tag_dir.mkdir(parents=True, exist_ok=True)
 
             if dataset_tag == "original":
                 for i, graph in enumerate(graph_list):
                     graph.serialize_diGraph(dataset_tag_dir / f"{i}.pt")
-            if dataset_tag == "noise":
+                    
+            if dataset_tag == "noise" or dataset_tag == "extended":
                 idx = 0  # starting position
-                for group_index, size in enumerate(dimensions, start=1):
+                for group_index, size in enumerate(dimensions):
                     for i in range(1, size + 1):
                         graph = graph_list[idx]
                         graph.serialize_diGraph(dataset_tag_dir / f"{group_index}_{i}.pt")
@@ -1120,19 +1119,26 @@ class SyntheticDatasetGenerator():
         self.graphs["noise"].clear()
         self.graphs["extended"].clear()
 
-        # Deserialize original graphs
+        def extract_numeric_key(file):
+            """Extracts (X, Y) from filenames like 'X_Y.pt' for proper numeric sorting."""
+            name_parts = file.stem.split("_")
+            return int(name_parts[0]), int(name_parts[1])
+
         original_dir = dataset_dir / "original"
-        for file in sorted(original_dir.glob("*.pt")):
+        original_files = sorted(original_dir.glob("*.pt"), key=lambda f: int(f.stem))
+
+        for file in original_files:
             graph = GraphWrapper()
             graph.deserialize_diGraph(str(file))
             self.graphs["original"].append(graph)
 
-        # Deserialize noise graphs
-        noise_dir = dataset_dir / "noise"
-        for file in sorted(noise_dir.glob("*.pt")):
+        extended_dir = dataset_dir / "extended"
+        extended_files = sorted(extended_dir.glob("*.pt"), key=extract_numeric_key)
+
+        for file in extended_files:
             graph = GraphWrapper()
             graph.deserialize_diGraph(str(file))
-            self.graphs["noise"].append(graph)
+            self.graphs["extended"].append(graph)
 
         return dimensions
 

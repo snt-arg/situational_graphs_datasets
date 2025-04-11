@@ -34,7 +34,7 @@
     },
     "postprocess": {
         "training": [
-            {"pp_name":"msd_adaptation"},
+            {"pp_name": "msd_adaptation"},
             {"pp_name": "add_global_noise", "translation": 0.0, "rotation": 1.0},
             {"pp_name": "add_local_noise", "translation": 0.0, "rotation": 0.012},
             {"pp_name": "dropout", "room": 0.0, "ws":0.3}
