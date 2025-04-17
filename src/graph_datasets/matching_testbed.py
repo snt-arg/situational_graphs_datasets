@@ -13,29 +13,37 @@ dim = dataset_generator.deserialize_and_transform_to_GWraph()
 # dataset_generator.create_dataset()
 # # filtered_nxdataset = dataset_generator.get_filtered_datset(settings_hdata["nodes"],settings_hdata["edges"])["noise"]
 
-extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["noise"], "training", "training")
+extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["original"], "training", "training")
 
 a_graphs_list = dataset_generator.graphs["original"]
 s_graphs_list = dataset_generator.graphs["noise"]
 extended_list = dataset_generator.graphs["extended"]
 
-# print first 1 graphs
-for i in range(1):
-    print(f"Original Graph {i}:")
-    print("Node Attributes:")
-    for node, attributes in extended_list[i].get_attributes_of_all_nodes():
-        print(f"  Node {node}:\n\t {attributes}")
+
+# assert len(a_graphs_list) == len(dim), "Number of original and dimensions must be the same dim"
+# count = 0
+# for i in range(len(dim)):
+#     count += dim[i]
+# assert len(s_graphs_list) == count, "Number of noise graphs must be equal to the sum of dimensions"
+# assert len(extended_list) == count, "Number of extended graphs must be equal to the sum of dimensions"
+
+# # print first 1 graphs
+# for i in range(1):
+#     print(f"Original Graph {i}:")
+#     print("Node Attributes:")
+#     for node, attributes in extended_list[i].get_attributes_of_all_nodes():
+#         print(f"  Node {node}:\n\t {attributes}")
     
-    print("Edge Attributes:")
-    for edge_data in extended_list[i].get_attributes_of_all_edges():
-        edge1, edge2, attributes = edge_data[0], edge_data[1], edge_data[2]
-        print(f"  Edge {edge1}__{edge2}:\n\t {attributes}")
+#     print("Edge Attributes:")
+#     for edge_data in extended_list[i].get_attributes_of_all_edges():
+#         edge1, edge2, attributes = edge_data[0], edge_data[1], edge_data[2]
+#         print(f"  Edge {edge1}__{edge2}:\n\t {attributes}")
 
 dataset_generator.serialize_MSD_dataset(dim)
 
-dim = dataset_generator.deserialize_MSD_dataset()
+# dim = dataset_generator.deserialize_MSD_dataset()
 
-print(dim)
+# print(dim)
 
 # # normalized_nxdatset = dataset_generator.normalize_features_nxdatset(extended_nxdatset)
 # # view1 = dataset_generator.graphs["views"][0].filter_graph_by_node_attributes_containted({"view" : 1})

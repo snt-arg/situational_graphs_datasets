@@ -625,7 +625,7 @@ class SyntheticDatasetGenerator():
                 working_graph = self.merge_rooms(pp_settings, working_graph)
             elif pp_settings["pp_name"] == "plot":
                 if pp_settings["msd"]: 
-                    pl.plot_a_graph([working_graph.graph],viz_room_normals=True)
+                    pl.plot_a_graph([working_graph.graph],viz_room_normals=True,viz_walls=False)
                 else:
                     fig = visualize_nxgraph(working_graph, pp_settings["fig_name"], visualize_alone=pp_settings["visualize_alone"])
                 if pp_settings["save_path"]:
@@ -638,55 +638,66 @@ class SyntheticDatasetGenerator():
                 working_graph.unfreeze()
             elif pp_settings["pp_name"] == "add_global_noise":
                 global_translation = np.array(pp_settings["translation"]) * (np.random.rand(2) - 0.5)
-                global_rotation_angle = np.random.rand(1)[0] * 360 * pp_settings["rotation"]
-                rotation_matrix = R.from_euler("Z", global_rotation_angle, degrees=True)
+                global_rotation_angle = np.random.rand() * 360 * pp_settings["rotation"]
+                rotation_matrix_2d = R.from_euler("Z", global_rotation_angle, degrees=True).as_matrix()[:2, :2]
 
                 for node_id, node_attrs in working_graph.get_attributes_of_all_nodes():
                     if "center" in node_attrs:
-                        center_3d = np.append(node_attrs["center"][:2] + global_translation, 0)  # Add z-coordinate as 0
-                        new_center_3d = rotation_matrix.apply(center_3d)
-                        node_attrs["center"][:2] = new_center_3d[:2]
-                        node_attrs["viz_data"] = new_center_3d[:2]
-                        
+                        new_center = rotation_matrix_2d @ (node_attrs["center"][:2] + global_translation)
+                        node_attrs["center"][:2] = new_center
+                        node_attrs["viz_data"] = new_center
+
                     if "normal" in node_attrs:
-                        normal_3d = np.append(node_attrs["normal"][:2], 0)  # Add z-coordinate as 0
-                        new_normal_3d = rotation_matrix.apply(normal_3d)
-                        node_attrs["normal"][:2] = new_normal_3d[:2]
+                        new_normal = rotation_matrix_2d @ node_attrs["normal"][:2]
+                        node_attrs["normal"][:2] = new_normal
 
                     if "polygon" in node_attrs:
-                        new_polygon = []
-                        for point in node_attrs["polygon"]:
-                            point_3d = np.append(point[:2] + global_translation, 0)
-                            new_point_3d = rotation_matrix.apply(point_3d)
-                            new_polygon.append(new_point_3d[:2])
-                        node_attrs["polygon"] = new_polygon
-                        
+                        new_polygon = [
+                            rotation_matrix_2d @ (np.array(point[:2]) + global_translation)
+                            for point in node_attrs["polygon"]
+                        ]
+                        node_attrs["polygon"] = [p.tolist() for p in new_polygon]
+                    if "limits" in node_attrs:
+                        new_limits = [
+                            rotation_matrix_2d @ (np.array(point[:2]) + global_translation)
+                            for point in node_attrs["limits"]
+                        ]
+                        node_attrs["limits"] = [p.tolist() for p in new_limits]
+
                     working_graph.update_node_attrs(node_id, node_attrs)
 
             elif pp_settings["pp_name"] == "add_local_noise":
                 for node_id, node_attrs in working_graph.get_attributes_of_all_nodes():
-                    if "center" in node_attrs and node_attrs["type"] == "ws":
+                    if "center" in node_attrs and node_attrs.get("type") == "ws":
+                        # Calculate local translation (only for the center)
                         local_translation = np.array(pp_settings["translation"]) * (np.random.rand(2) - 0.5)
-                        local_rotation_angle = (np.random.rand(1)[0] - 0.5) * 360 * pp_settings["rotation"]
-                        rotation_matrix = R.from_euler("Z", local_rotation_angle, degrees=True)
 
-                        new_center_3d = rotation_matrix.apply(np.append(node_attrs["center"][:2] + local_translation, 0))
-                        node_attrs["center"][:2] = new_center_3d[:2]
-                        node_attrs["viz_data"] = new_center_3d[:2]
+                        # Calculate local rotation (for normal and limits)
+                        local_rotation_angle = (np.random.rand() - 0.5) * 360 * pp_settings["rotation"]
+                        rotation_matrix_2d = R.from_euler("Z", local_rotation_angle, degrees=True).as_matrix()[:2, :2]
 
+                        # --- TRANSLATE ONLY THE CENTER ---
+                        new_center = node_attrs["center"][:2] + local_translation
+                        node_attrs["center"][:2] = new_center
+                        node_attrs["viz_data"] = new_center
+
+                        # --- ROTATE ONLY THE NORMAL ---
                         if "normal" in node_attrs:
-                            new_normal_3d = rotation_matrix.apply(np.append(node_attrs["normal"][:2], 0))
-                            node_attrs["normal"][:2] = new_normal_3d[:2]
+                            new_normal = rotation_matrix_2d @ node_attrs["normal"][:2]
+                            node_attrs["normal"][:2] = new_normal
 
-                        if "polygon" in node_attrs:
-                            new_polygon = []
-                            for point in node_attrs["polygon"]:
-                                point_3d = np.append(point[:2] + local_translation, 0)
-                                new_point_3d = rotation_matrix.apply(point_3d)
-                                new_polygon.append(new_point_3d[:2])
-                            node_attrs["polygon"] = new_polygon
+                        # --- ROTATE THE LIMITS (without translation) ---
+                        if "limits" in node_attrs:
+                            center = node_attrs["center"][:2]  # updated center
+                            rotated_limits = []
+                            for point in node_attrs["limits"]:
+                                vec = np.array(point[:2]) - center  # vector relative to the center
+                                rotated_point = center + rotation_matrix_2d @ vec  # rotate around the center
+                                rotated_limits.append(rotated_point.tolist())
+                            node_attrs["limits"] = rotated_limits
 
                         working_graph.update_node_attrs(node_id, node_attrs)
+
             elif pp_settings["pp_name"] == "msd_adaptation":
                 nodes_to_remove = []
                 for node_id, node_attrs in working_graph.get_attributes_of_all_nodes():
@@ -708,7 +719,23 @@ class SyntheticDatasetGenerator():
                         if("width" in node_attrs):
                             node_attrs["length"] = node_attrs.pop("width")
                     if "ws" in node_attrs["type"]:
-                        node_attrs["limits"] = [node_attrs["geom"][0], node_attrs["geom"][1]]
+                        length = node_attrs["length"]
+                        center = np.array(node_attrs["center"][:2])
+                        normal = np.array(node_attrs["normal"][:2])
+
+                        # Rotazioni di ±90 gradi
+                        normal_pos_90 = np.array([-normal[1], normal[0]])   # +90°
+                        normal_neg_90 = np.array([normal[1], -normal[0]])   # -90°
+
+                        # Calcolo dei limiti
+                        half_length = length / 2.0
+                        limit_1 = (center + half_length * normal_pos_90).tolist()
+                        limit_2 = (center + half_length * normal_neg_90).tolist()
+
+                        node_attrs["limits"] = [limit_1, limit_2]
+
+                        # not doing in this way cause I can better check info passed to the network
+                        # node_attrs["limits"] = [node_attrs["geom"][0], node_attrs["geom"][1]]
                 working_graph.remove_nodes(nodes_to_remove)
 
             return working_graph
@@ -1052,8 +1079,8 @@ class SyntheticDatasetGenerator():
 
         dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),"msd/data") 
 
-        dim_name = os.path.join(dataset_dir, "MSD - Some Apartment-Level partials counter.pickle")
-        graph_name = os.path.join(dataset_dir, "MSD - Some Apartment-Level partials.pickle")
+        dim_name = os.path.join(dataset_dir, "MSD - Apartment-Level partials graphs counter cleaned.pickle")
+        graph_name = os.path.join(dataset_dir, "MSD - Apartment-Level partials graphs cleaned 5.0K.pickle")
 
         graphs = []
         dimensions = []
@@ -1087,17 +1114,18 @@ class SyntheticDatasetGenerator():
             dataset_tag_dir = dataset_dir / dataset_tag
             dataset_tag_dir.mkdir(parents=True, exist_ok=True)
 
-            if dataset_tag == "original":
+            if dataset_tag == "original" or dataset_tag == "extended":
                 for i, graph in enumerate(graph_list):
                     graph.serialize_diGraph(dataset_tag_dir / f"{i}.pt")
                     
-            if dataset_tag == "noise" or dataset_tag == "extended":
-                idx = 0  # starting position
-                for group_index, size in enumerate(dimensions):
-                    for i in range(1, size + 1):
-                        graph = graph_list[idx]
-                        graph.serialize_diGraph(dataset_tag_dir / f"{group_index}_{i}.pt")
-                        idx += 1
+            # uncomment for partial graph matching        
+            # if dataset_tag == "noise" or dataset_tag == "extended":
+            #     idx = 0  # starting position
+            #     for group_index, size in enumerate(dimensions):
+            #         for i in range(1, size + 1):
+            #             graph = graph_list[idx]
+            #             graph.serialize_diGraph(dataset_tag_dir / f"{group_index}_{i}.pt")
+            #             idx += 1
         # serilize in the dataset_dir the dimensions
         with open(os.path.join(dataset_dir, "dimensions.pickle"), 'wb') as f:
             pickle.dump(dimensions, f)

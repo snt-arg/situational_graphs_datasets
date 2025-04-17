@@ -35,9 +35,14 @@
     "postprocess": {
         "training": [
             {"pp_name": "msd_adaptation"},
-            {"pp_name": "add_global_noise", "translation": 0.0, "rotation": 1.0},
-            {"pp_name": "add_local_noise", "translation": 0.0, "rotation": 0.012},
-            {"pp_name": "dropout", "room": 0.0, "ws":0.3}
+            {"pp_name": "plot", "msd": true, "save_path":false},
+            {"pp_name": "add_global_noise", "translation": 0.01, "rotation": 1.0},
+            {"pp_name": "plot", "msd": true, "save_path":false},
+            {"pp_name": "add_local_noise", "translation": 0.01, "rotation": 0.012},
+            {"pp_name": "plot", "msd": true, "save_path":false},
+            {"pp_name": "dropout", "room": 0.0, "ws":0.2},
+            {"pp_name": "plot", "msd": true, "save_path":false}
+            
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false},
