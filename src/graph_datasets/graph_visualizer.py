@@ -2,14 +2,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids=True):
+def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids=True, logger = None):
     nodes_data = graph.get_attributes_of_all_nodes()
     fig = plt.figure(image_name)
     # fig.clf()
     ax = fig.add_subplot(111)
     for node_data in nodes_data:
         if node_data[1]["viz_type"] == "Point":
-            ax.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"])
+            if "markersize" in node_data[1].keys():
+                markersize = node_data[1]["markersize"]
+            else:
+                markersize = 1.0
+            ax.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"], markersize=markersize*10)
             tag_center = node_data[1]["viz_data"]
             # print(f'dbg node_data[1] {node_data[1]}')
 
