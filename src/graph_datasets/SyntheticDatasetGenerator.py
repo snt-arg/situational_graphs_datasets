@@ -20,7 +20,9 @@ import sys
 import os
 import ast
 
-msd_dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),"msd") 
+msd_dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),"msd")
+msd_dataset_dir = "/home/adminpc/workspaces/reasoning_ws/src/msd/"
+print(msd_dataset_dir)
 sys.path.append(msd_dataset_dir)
 
 import plot as pl
@@ -1077,7 +1079,7 @@ class SyntheticDatasetGenerator():
         self.graphs["noise"].clear()
         self.graphs["extended"].clear()
 
-        dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),"msd/data") 
+        dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),"msd/data") 
 
         dim_name = os.path.join(dataset_dir, "MSD - Apartment-Level partials graphs counter cleaned.pickle")
         graph_name = os.path.join(dataset_dir, "MSD - Apartment-Level partials graphs cleaned 5.0K.pickle")
