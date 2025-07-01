@@ -37,7 +37,9 @@
             {"pp_name": "merge_room", "ratio": 0.5},
             {"pp_name": "unfreeze"},
             {"pp_name": "remove_self_loops"},
-            {"pp_name": "add_random_objects", "max_obj": 4}
+            {"pp_name": "add_random_objects", "max_obj": 4},
+            {"pp_name": "add_floor_node"},
+            {"pp_name": "add_stories", "add_floor_nodes": false,"n_stories": 4}
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
