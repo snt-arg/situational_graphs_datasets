@@ -11,6 +11,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 import torch
+from shapely.geometry import Polygon, Point
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import sys
@@ -377,6 +379,79 @@ class SyntheticDatasetGenerator():
         working_graph = self.add_building_node(working_graph)
 
         return working_graph
+    
+
+    def add_random_objects(self, graph, max_obj):
+        def lines_to_polygon(lines):
+            """
+            lines: list of line segments, each as [(x1, y1), (x2, y2)]
+            Returns a shapely Polygon if the lines form a closed shape.
+            """
+            # Flatten all points
+            all_points = []
+            for line in lines:
+                all_points.extend(line)
+            # Remove duplicates while preserving order
+            seen = set()
+            ordered_points = []
+            for pt in all_points:
+                tpt = tuple(pt)
+                if tpt not in seen:
+                    ordered_points.append(tpt)
+                    seen.add(tpt)
+            # Ensure the polygon is closed
+            if ordered_points[0] != ordered_points[-1]:
+                ordered_points.append(ordered_points[0])
+            # Create the polygon
+            poly = Polygon(ordered_points)
+            return poly
+        
+        def random_points_in_polygon(polygon, n):
+            """
+            Randomly sample n points inside a shapely Polygon.
+            Returns a list of shapely Point objects.
+            """
+            minx, miny, maxx, maxy = polygon.bounds
+            points = []
+            attempts = 0
+            while len(points) < n and attempts < n * 100:
+                random_point = Point(np.random.uniform(minx, maxx), np.random.uniform(miny, maxy))
+                if polygon.contains(random_point):
+                    points.append(random_point)
+                attempts += 1
+            if len(points) < n:
+                print(f"Warning: Only found {len(points)} points inside the polygon after {attempts} attempts.")
+            
+            points_list = [[point.x, point.y, 0] for point in points]
+            return points_list
+        
+        rooms_ids = copy.deepcopy(graph.filter_graph_by_node_types("room").get_nodes_ids())
+        print(f"dbg rooms_ids {rooms_ids}")
+        
+        for room_id in rooms_ids:
+            ws_ids = graph.get_neighbourhood_graph(room_id).filter_graph_by_node_types("ws").get_nodes_ids()
+            print(f"dbg ws_ids {ws_ids}")
+            segments = []
+            for ws_id in ws_ids:
+                segment = graph.get_attributes_of_node(ws_id)["limits"]
+                segments.append(segment)
+
+            poly = lines_to_polygon(segments)
+            print(f"dbg poly {poly}")
+
+            obj_poses = random_points_in_polygon(poly, random.randint(0, max_obj + 1))
+            print(f"dbg obj_poses {obj_poses}")
+
+            new_edges = []
+            for obj_pose in obj_poses:
+                obj_id = max(graph.get_nodes_ids()) + 1
+                graph.add_nodes([(obj_id,{"type" : "object", "x" : obj_pose, "center" : obj_pose,\
+                            "viz_type" : "Point", "viz_data" : obj_pose, "viz_feat" : 'ks'})])
+                new_edges.append((obj_id, room_id, {"type": "object_same_room", "x":[], "viz_feat": "black", "linewidth":1.0, "alpha":0.5}))
+            
+            graph.add_edges(new_edges)
+
+        return graph
             
     def set_dataset(self, tag, nxdata):
         self.graphs[tag] = nxdata
@@ -690,6 +765,9 @@ class SyntheticDatasetGenerator():
 
             elif pp_settings["pp_name"] == "add_stories":
                 working_graph = self.add_stories(working_graph, pp_settings["n_stories"], pp_settings["add_floor_nodes"])
+
+            elif pp_settings["pp_name"] == "add_random_objects":
+                working_graph = self.add_random_objects(working_graph, pp_settings["max_obj"])
 
             return working_graph
 
