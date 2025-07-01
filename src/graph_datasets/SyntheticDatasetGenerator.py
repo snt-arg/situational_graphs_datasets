@@ -214,7 +214,7 @@ class SyntheticDatasetGenerator():
             geometric_info = room_center
             
             graph.add_nodes([(node_ID,{"type" : "room","center" : room_center, "x": room_center, "orientation_angle": room_orientation_angle, "area" : room_area, "Geometric_info" : geometric_info,\
-                                            "viz_type" : "Point", "viz_data" : room_center[:2], "viz_feat" : 'ro'})])
+                                            "viz_type" : "Point", "viz_data" : room_center, "viz_feat" : 'ro'})])
         if add_multiview:
             num_multiviews = self.settings["multiview"]["number"]
             overlapping = self.settings["multiview"]["overlapping"]
@@ -266,7 +266,7 @@ class SyntheticDatasetGenerator():
                 color_map = ["black", "black", "black", "black"]
 
                 graph.add_nodes([(node_ID,{"type" : "ws","center" : ws_center, "y" : y, "normal" : ws_normal, "Geometric_info" : geometric_info,\
-                                           "viz_type" : "Line", "viz_data" : [ws_limit_1[:2],ws_limit_2[:2]], "viz_feat" : color_map[i],\
+                                           "viz_type" : "Line", "viz_data" : [ws_limit_1,ws_limit_2], "viz_feat" : color_map[i],\
                                            "canonic_normal_index" : canonic_normals[i], "linewidth": 2.0, "limits": [ws_limit_1,ws_limit_2],
                                            "length": ws_length})])
                 graph.add_edges([(node_ID, node_data[0], {"type": "ws_belongs_room", "x": [], "viz_feat" : 'red', "linewidth":1.0, "alpha":0.5})])
@@ -322,8 +322,62 @@ class SyntheticDatasetGenerator():
                             if add_multiview:
                                 graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(current_room_neigh_ws_id)["view"]})
 
-        return graph
 
+        return graph
+    
+    def add_floor_node(self, graph):
+        rooms_attrs = graph.filter_graph_by_node_attributes({"type" : "room"}).get_attributes_of_all_nodes()
+        room_ids = [attr[0] for attr in rooms_attrs]
+        room_centers = [attr[1]["center"] for attr in rooms_attrs]
+        floor_center = np.array(room_centers).sum(axis=0) / len(room_centers)
+        floor_node_id = max(graph.get_nodes_ids()) + 1
+        graph.add_nodes([(floor_node_id,{"type" : "floor", "x" : floor_center, "center" : floor_center,\
+                            "viz_type" : "Point", "viz_data" : floor_center, "viz_feat" : 'go'})])
+        for room_id in room_ids:
+            graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "g",\
+                                                        "linewidth":1.0, "alpha":0.5})])
+            
+        return graph
+    
+    
+    def add_building_node(self, graph):
+        floors_attrs = graph.filter_graph_by_node_attributes({"type" : "floor"}).get_attributes_of_all_nodes()
+        floor_ids = [attr[0] for attr in floors_attrs]
+        floor_centers = [attr[1]["center"] for attr in floors_attrs]
+        floor_center = np.array(floor_centers).sum(axis=0) / len(floor_centers)
+        floor_node_id = max(graph.get_nodes_ids()) + 1
+        graph.add_nodes([(floor_node_id,{"type" : "builing", "x" : floor_center, "center" : floor_center,\
+                            "viz_type" : "Point", "viz_data" : floor_center, "viz_feat" : 'co'})])
+        for floor_id in floor_ids:
+            graph.add_edges([(floor_id, floor_node_id, {"type": "floor_belongs_building", "x": [],"viz_feat": "c",\
+                                                        "linewidth":1.0, "alpha":0.5})])
+             
+        return graph
+    
+    def add_stories(self, graph, n_floors = None, add_floor_nodes = False):
+        story_height = 5
+        initial_graph = copy.deepcopy(graph)
+        working_graph = copy.deepcopy(graph)
+        for n_floor in range(n_floors - 1):
+            new_graph = copy.deepcopy(initial_graph)
+
+            if add_floor_nodes:
+                new_graph = self.add_floor_node(new_graph)
+
+            current_story_height = story_height * (n_floor + 1)
+            new_graph.translate_geometries(np.array([0,0,current_story_height]))
+
+            id_offset = max(working_graph.get_nodes_ids()) + 1
+            id_mapping = {o: i + id_offset for i, o in enumerate(new_graph.get_nodes_ids())}
+            new_graph.relabel_nodes(mapping=id_mapping, copy=False)
+            # print(f"dbg graph {graph.get_nodes_ids()}")
+            # print(f"dbg id_mapping {id_mapping}")
+            working_graph = working_graph.merge_graph(new_graph)
+
+        working_graph = self.add_building_node(working_graph)
+
+        return working_graph
+            
     def set_dataset(self, tag, nxdata):
         self.graphs[tag] = nxdata
     
@@ -631,6 +685,12 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "unfreeze":
                 working_graph.unfreeze()
 
+            elif pp_settings["pp_name"] == "add_floor_node":
+                working_graph = self.add_floor_node(working_graph)
+
+            elif pp_settings["pp_name"] == "add_stories":
+                working_graph = self.add_stories(working_graph, pp_settings["n_stories"], pp_settings["add_floor_nodes"])
+
             return working_graph
 
         for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
@@ -642,7 +702,7 @@ class SyntheticDatasetGenerator():
                 base_graph = apply_postprocess(self, pp_settings, base_graph)
                 # part_2_end = time.time()
                 # print(f"dbg elapsed time in pp {pp_settings['pp_name']}: {part_2_end - part_1_end}")
-
+            
             if len(base_graph.get_nodes_ids()) > 0 and len(base_graph.get_edges_ids()) > 0:
                 new_nxdataset.append(base_graph)
 
@@ -684,7 +744,7 @@ class SyntheticDatasetGenerator():
                             _, min_col = np.unravel_index(np.argmin(distances), distances.shape)
                             min_dist_idx = np.argmin(distances[:,1-min_col])
                             ws_node_attrs["limits"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
-                            ws_node_attrs["viz_data"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx][:2]))
+                            ws_node_attrs["viz_data"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
                             ws_node_attrs["center"] = copy.deepcopy((np.array(ws_node_attrs["limits"][0]) + np.array(ws_node_attrs["limits"][1])) / 2)
                             ws_length = np.linalg.norm(ws_node_attrs["limits"][0] - ws_node_attrs["limits"][1])
                             # feature_dict = {"ws_center": ws_node_attrs["center"], "ws_normal": ws_node_attrs["normal"], "ws_length": ws_length}
@@ -771,7 +831,7 @@ class SyntheticDatasetGenerator():
 
                     room1_attrs["center"] = room_center
                     room1_attrs["x"] = room_center
-                    room1_attrs["viz_data"] = room_center[:2]
+                    room1_attrs["viz_data"] = room_center
                     working_graph.update_node_attrs(room_nodes_ids[0], room1_attrs)
 
                     combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
@@ -904,6 +964,22 @@ class SyntheticDatasetGenerator():
                 hdataset_key.append(nxgraph.nx_to_hetero())
             hdataset[key] = hdataset_key
         return hdataset
+    
+    def save_wrappers_to_pickle(self, nxdataset, path):
+        import pickle
+        print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Saving Dataset to pickle" + Fore.WHITE)
+        with open(path, 'wb') as f:
+            pickle.dump(nxdataset, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Dataset saved to pickle" + Fore.WHITE)
+
+    def save_networkx_graphs_to_pickle(self, nxdataset, path):
+        import pickle
+        nx_list = [wrapper.graph for wrapper in nxdataset]
+
+        print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Saving Dataset to pickle" + Fore.WHITE)
+        with open(path, 'wb') as f:
+            pickle.dump(nx_list, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Dataset saved to pickle" + Fore.WHITE)
 
     # def save_to_files(self):
     #     dataset_dir = graph_datasets_dir + f"/{self.dataset_name}"
