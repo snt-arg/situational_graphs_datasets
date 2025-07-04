@@ -426,21 +426,17 @@ class SyntheticDatasetGenerator():
             return points_list
         
         rooms_ids = copy.deepcopy(graph.filter_graph_by_node_types("room").get_nodes_ids())
-        print(f"dbg rooms_ids {rooms_ids}")
         
         for room_id in rooms_ids:
             ws_ids = graph.get_neighbourhood_graph(room_id).filter_graph_by_node_types("ws").get_nodes_ids()
-            print(f"dbg ws_ids {ws_ids}")
             segments = []
             for ws_id in ws_ids:
                 segment = graph.get_attributes_of_node(ws_id)["limits"]
                 segments.append(segment)
 
             poly = lines_to_polygon(segments)
-            print(f"dbg poly {poly}")
 
             obj_poses = random_points_in_polygon(poly, random.randint(0, max_obj + 1))
-            print(f"dbg obj_poses {obj_poses}")
 
             new_edges = []
             for obj_pose in obj_poses:
