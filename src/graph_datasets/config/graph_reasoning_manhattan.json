@@ -1,15 +1,12 @@
 {   
-    "source": {
-        "type": "synthetic",
-        "base_graphs": {
-            "grid_dims" : [[70,140],[70,140]],
-            "playground_size": [100, 100],
-            "max_room_entry_size" : [100,100],
-            "min_room_entry_size" : [10,10],
-            "room_center_distances" : [0.1,0.1],
-            "wall_thickness" : [0.16,0.2],
-            "n_buildings" : 20
-        }
+    "base_graphs": {
+        "grid_dims" : [[50,140],[50,140]],
+        "playground_size": [100, 100],
+        "max_room_entry_size" : [100,100],
+        "min_room_entry_size" : [10,10],
+        "room_center_distances" : [0.1,0.1],
+        "wall_thickness" : [0.16,0.2],
+        "n_buildings" : 1000
     },
     "noise":{
         "global":{
@@ -37,9 +34,9 @@
     },
     "postprocess": {
         "training": [
-            {"pp_name": "merge_room", "ratio": 0.5},
-            {"pp_name": "dropout", "room": 0.2, "ws":0.0},
-            {"pp_name": "ws_split", "ratio": 0.25},
+            {"pp_name": "merge_room", "ratio": 0.0},
+            {"pp_name": "dropout", "room": 0.0, "ws":0.0},
+            {"pp_name": "ws_split", "ratio": 0.0},
             {"pp_name": "filter", "nodes": ["ws"], "edges":[
                 [
                     "ws",
@@ -51,17 +48,17 @@
                     "ws"
                 ]
             ]},
-            {"pp_name": "dropout", "room": 0.0, "ws":0.25},
-            {"pp_name": "ws_partial_occlusion", "ratio": 0.25},
+            {"pp_name": "dropout", "room": 0.0, "ws":0.0},
+            {"pp_name": "ws_partial_occlusion", "ratio": 0.0},
             {"pp_name": "add_gt"},
-            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
+            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":true},
             {"pp_name": "relabel_nodes", "mapping": false, "copy":true},
             {"pp_name": "remove_self_loops"},
             {"pp_name": "unfreeze"},
             {"pp_name": "add_x"}
         ],
         "final": [
-            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
+            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false},
             {"pp_name": "remove_self_loops"}
             
         ]

@@ -1,5 +1,5 @@
 from SyntheticDatasetGenerator import SyntheticDatasetGenerator
-from graph_visualizer import visualize_nxgraph, visualize_nxgraph_3d
+from graph_visualizer import visualize_nxgraph
 from InteractiveGraphVisualizer import InteractiveGraphVisualizer
 
 import matplotlib.pyplot as plt
@@ -7,11 +7,12 @@ import json, os, time, sys
 
 
 from graph_datasets.config import get_config as get_datasets_config
-# from graph_reasoning.config import get_config as get_reasoning_config
-synteticdataset_settings = get_datasets_config("graph_reasoning")
-synteticdataset_settings["base_graphs"]["n_buildings"] = 1
+from graph_reasoning.config import get_config as get_reasoning_config
+synteticdataset_settings = get_datasets_config("ifh")
+synteticdataset_settings["base_graphs"]["n_buildings"] = 1000
 
 dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = None, dataset_name = "test")
+dataset_generator.create_dataset()
 # filtered_nxdataset = dataset_generator.get_filtered_datset(settings_hdata["nodes"],settings_hdata["edges"])["noise"]
 extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["noise"], "training", "training")
 # normalized_nxdatset = dataset_generator.normalize_features_nxdatset(extended_nxdatset)
@@ -26,7 +27,13 @@ extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs[
 
 all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
 
-for graph in all_dataset:
-    # graph.remove_all_edges()
-    visualize_nxgraph_3d(graph, "train data", visualize_alone=True)
-    plt.show(block=True)
+
+# for graph in all_dataset:
+#     # graph.remove_all_edges()
+    
+#     visualize_nxgraph(graph, "train data", visualize_alone=True)
+#     plt.show()
+
+save_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/test/ssg.pickle"
+# dataset_generator.save_wrappers_to_pickle(extended_nxdatset['train'], save_path)
+dataset_generator.save_networkx_graphs_to_pickle(extended_nxdatset['train'], save_path)
