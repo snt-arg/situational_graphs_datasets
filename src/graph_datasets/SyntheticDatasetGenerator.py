@@ -51,7 +51,7 @@ class SyntheticDatasetGenerator():
         self.dataset_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), self.report_path, self.dataset_name)
         self.graphs = {"original":[],"noise":[],"views":[],"extended":[]}
 
-        if settings["source"]["type"] == "syntetic":
+        if settings["source"]["type"] == "synthetic":
             self.max_n_rooms = 0
             self.define_norm_limits()
 
@@ -68,14 +68,14 @@ class SyntheticDatasetGenerator():
         return new_settings
 
     def define_norm_limits(self):
-        grid_dims = self.settings["base_graphs"]["grid_dims"]
+        grid_dims = self.settings["source"]["base_graphs"]["grid_dims"]
         max_grid_dims = max(grid_dims[0][1],grid_dims[1][1])
-        max_room_center_distances = self.settings["base_graphs"]["room_center_distances"][-1]
-        max_room_entry_size = self.settings["base_graphs"]["max_room_entry_size"][-1]
+        max_room_center_distances = self.settings["source"]["base_graphs"]["room_center_distances"][-1]
+        max_room_entry_size = self.settings["source"]["base_graphs"]["max_room_entry_size"][-1]
         init_feat_keys = self.settings["initial_features"]
         max_building_size = max_grid_dims*max_room_center_distances
         max_room_size = max_room_entry_size*max_room_center_distances
-        max_wall_thickness = grid_dims = self.settings["base_graphs"]["wall_thickness"][1]
+        max_wall_thickness = grid_dims = self.settings["source"]["base_graphs"]["wall_thickness"][1]
 
         def add_features(type, feature_keys, working_dict):
             if type == "node":
@@ -122,7 +122,7 @@ class SyntheticDatasetGenerator():
 
     def create_dataset(self):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Generating Syntetic Dataset" + Fore.WHITE)
-        n_buildings = self.settings["base_graphs"]["n_buildings"]
+        n_buildings = self.settings["source"]["base_graphs"]["n_buildings"]
 
         def process_building(_):
             base_matrix = self.generate_base_matrix()
@@ -152,10 +152,10 @@ class SyntheticDatasetGenerator():
         # time.sleep(999)
 
     def generate_base_matrix(self):
-        grid_dims = [np.random.randint(self.settings["base_graphs"]["grid_dims"][0][0], self.settings["base_graphs"]["grid_dims"][0][1] + 1),
-                     np.random.randint(self.settings["base_graphs"]["grid_dims"][1][0], self.settings["base_graphs"]["grid_dims"][1][1] + 1)]
-        max_room_entry_size = np.random.randint(self.settings["base_graphs"]["max_room_entry_size"][0], self.settings["base_graphs"]["max_room_entry_size"][1] + 1)
-        min_room_entry_size = np.random.randint(self.settings["base_graphs"]["min_room_entry_size"][0], self.settings["base_graphs"]["min_room_entry_size"][1] + 1)
+        grid_dims = [np.random.randint(self.settings["source"]["base_graphs"]["grid_dims"][0][0], self.settings["source"]["base_graphs"]["grid_dims"][0][1] + 1),
+                     np.random.randint(self.settings["source"]["base_graphs"]["grid_dims"][1][0], self.settings["source"]["base_graphs"]["grid_dims"][1][1] + 1)]
+        max_room_entry_size = np.random.randint(self.settings["source"]["base_graphs"]["max_room_entry_size"][0], self.settings["source"]["base_graphs"]["max_room_entry_size"][1] + 1)
+        min_room_entry_size = np.random.randint(self.settings["source"]["base_graphs"]["min_room_entry_size"][0], self.settings["source"]["base_graphs"]["min_room_entry_size"][1] + 1)
 
         ### Base matrix
         base_matrix = np.zeros(grid_dims)
@@ -191,12 +191,12 @@ class SyntheticDatasetGenerator():
 
     def generate_graph_from_base_matrix(self, base_matrix, add_noise = False, add_multiview = False):
         graph = GraphWrapper()
-        room_center_distances = self.settings["base_graphs"]["room_center_distances"]
-        wall_thickness = np.random.uniform(self.settings["base_graphs"]["wall_thickness"][0], self.settings["base_graphs"]["wall_thickness"][1])
+        room_center_distances = self.settings["source"]["base_graphs"]["room_center_distances"]
+        wall_thickness = np.random.uniform(self.settings["source"]["base_graphs"]["wall_thickness"][0], self.settings["source"]["base_graphs"]["wall_thickness"][1])
 
         if add_noise:
             if self.settings["noise"]["global"]["active"]:
-                noise_global_center = np.concatenate([np.array(self.settings["base_graphs"]["playground_size"]) * self.settings["noise"]["global"]["translation"] * (np.random.rand(2)- 0.5), [0]])
+                noise_global_center = np.concatenate([np.array(self.settings["source"]["base_graphs"]["playground_size"]) * self.settings["noise"]["global"]["translation"] * (np.random.rand(2)- 0.5), [0]])
                 noise_global_rotation_angle = (np.random.rand(1)*360*self.settings["noise"]["global"]["rotation"])[0]
             else:
                 noise_global_center = [0,0,0]
@@ -1253,20 +1253,20 @@ class SyntheticDatasetGenerator():
             'wall': 'mo',
             'floor': 'go',
             'building': 'co',
-            'window': 'bo',
-            'door': 'yo'
+            'wall_ws': 'yo'
         }
 
-        node_attrs = graph.get_attributes_of_all_nodes()
-        edge_attrs = graph.get_attributes_of_all_edges()
+        nodes_attrs = graph.get_attributes_of_all_nodes()
+        edges_attrs = graph.get_attributes_of_all_edges()
 
         nodes_to_remove = []
+        edges_to_add = []
         current_node_id = 0
         node_id_mapping = {}
-        for node_id, node_attrs in node_attrs:
-            node_id_mapping[node_id] = current_node_id
+        for node_id, node_attrs in nodes_attrs:
+            node_id_mapping[node_id] = copy.deepcopy(current_node_id)
             current_node_id += 1
-            if node_attrs["type"] in ["room", "wall","floor","building","window",'door']:
+            if node_attrs["type"] in ["room", "wall","floor","building"]:
                 node_attrs["center"] = np.array(node_attrs["center"])
                 node_attrs["viz_data"] = node_attrs["center"]
                 node_attrs["viz_type"] = "Point"
@@ -1290,17 +1290,41 @@ class SyntheticDatasetGenerator():
                 node_attrs["linewidth"] = 2.0
                 node_attrs["alpha"] = 1.0
 
-            # if node_attrs["type"] in ["wall_ws"]:
-            #     print("flagFFFFFFFFFFFFFFFFFFFFFFFFS")
-            #     ws_id = graph.get_neighbourhood_graph(node_id).filter_graph_by_node_types(["ws"])
-            #     room_id = graph.get_neighbourhood_graph(node_id).filter_graph_by_node_types(["ws"])
-            #     # filter_graph_by_node_types(["ws"])
+            elif node_attrs["type"] in ["wall_ws"]:
+                room_id = list(copy.deepcopy(graph).get_neighbourhood_graph(node_id).filter_graph_by_node_types(["room"]).get_nodes_ids())[0]
+                WALL_id = list(copy.deepcopy(graph).get_neighbourhood_graph(node_id).filter_graph_by_node_types(["wall"]).get_nodes_ids())[0]
+                room_WSs_ids = list(copy.deepcopy(graph).get_neighbourhood_graph(room_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
+                center_WALL_WS = graph.get_attributes_of_node(node_id)["center"]
 
+                minimum_distance = 9999
+                closest_WS = None
+                for room_WS_id in room_WSs_ids:
+                    center_WS = graph.get_attributes_of_node(room_WS_id)["center"]
+                    distance = np.linalg.norm(center_WALL_WS - center_WS)
+                    if not closest_WS or (minimum_distance > distance):
+                        minimum_distance = distance
+                        closest_WS = room_WS_id
+                
+                # print(f"dbg room_id {room_id} WALL_id {WALL_id} closest_WS {closest_WS}")
+                nodes_to_remove.append(node_id)
+                edges_to_add.append((WALL_id, closest_WS, {}))
+                
             else:
                 nodes_to_remove.append(node_id)
 
         graph.remove_nodes(nodes_to_remove)
+        graph.add_edges(edges_to_add)
         graph.relabel_nodes(node_id_mapping)
+
+        nodes_attrs = graph.get_attributes_of_all_nodes()
+        nodes_to_remove = []
+        for node_id, node_attrs in nodes_attrs:
+            if node_attrs["type"] in ["wall"]:
+                ws_count = len(list(copy.deepcopy(graph).get_neighbourhood_graph(node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids()))
+                if ws_count <= 1:
+                    nodes_to_remove.append(node_id)
+
+        graph.remove_nodes(nodes_to_remove)
 
         return graph
 

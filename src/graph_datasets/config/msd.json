@@ -29,10 +29,6 @@
     },
     "postprocess": {
         "training": [
-            {"pp_name": "unfreeze"},
-            {"pp_name": "remove_self_loops"},
-            {"pp_name": "add_floor_node"},
-            {"pp_name": "add_stories", "add_floor_nodes": false,"n_stories": 4}
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
