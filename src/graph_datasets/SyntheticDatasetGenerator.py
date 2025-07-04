@@ -20,10 +20,7 @@ import sys
 import os
 import ast
 
-msd_dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),"msd")
-msd_dataset_dir = "/home/adminpc/workspaces/reasoning_ws/src/msd/"
-print(msd_dataset_dir)
-sys.path.append(msd_dataset_dir)
+
 
 import plot as pl
 
@@ -50,9 +47,14 @@ class SyntheticDatasetGenerator():
         self.report_path = report_path
         self.dataset_name = dataset_name
         self.dataset_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), self.report_path, self.dataset_name)
-        self.define_norm_limits()
         self.graphs = {"original":[],"noise":[],"views":[],"extended":[]}
-        self.max_n_rooms = 0
+
+        if settings["source"]["type"] == "syntetic":
+            self.max_n_rooms = 0
+            self.define_norm_limits()
+
+        elif settings["source"]["type"] == "msd":
+            self.dataset_from_msd(settings["source"]["pickle_path"])
 
     def correct_json_initfeat_keys(self, settings):
         new_settings = copy.deepcopy(settings)
@@ -1073,8 +1075,82 @@ class SyntheticDatasetGenerator():
             f.close()
         return object
 
+    def dataset_from_msd(self, path):
+        with open(path, 'rb') as f:
+            raw_msd_graphs = pickle.load(f)
+            f.close()
+
+        graphs = []
+        for msd_graph in raw_msd_graphs:
+
+            graphs.append(self.graph_from_msd(GraphWrapper(graph_obj = copy.deepcopy(msd_graph))))
+
+        self.graphs["original"] = graphs
+
+        return graphs
+
+    def graph_from_msd(self, msd_graph):
+
+        graph = copy.deepcopy(msd_graph)
+        node_viz_feat_mapping = {
+            'ws': "black",
+            'room': 'ro',
+            'wall': 'mo',
+            'floor': 'go',
+            'building': 'co',
+            'window': 'bo',
+            'door': 'yo'
+        }
+
+        node_attrs = graph.get_attributes_of_all_nodes()
+        edge_attrs = graph.get_attributes_of_all_edges()
+
+        nodes_to_remove = []
+        for node_id, node_attrs in node_attrs:
+            
+            if node_attrs["type"] in ["room", "wall","floor","building","window",'door']:
+                node_attrs["center"] = np.array(node_attrs["center"])
+                node_attrs["viz_data"] = node_attrs["center"]
+                node_attrs["viz_type"] = "Point"
+                node_attrs["viz_feat"] = node_viz_feat_mapping[node_attrs["type"]]
+                node_attrs["linewidth"] = 1.0
+                node_attrs["alpha"] = 0.5
+
+            elif node_attrs["type"] in ["ws"]:
+                node_attrs["center"] = np.array(node_attrs["center"])
+                node_attrs["normal"] = np.array(node_attrs["normal"])
+                node_attrs["length"] = node_attrs["width"]
+                rotation = R.from_euler('z', -90, degrees=True)
+                ws_direction = rotation.apply(node_attrs["normal"])
+                ws_direction /= np.linalg.norm(ws_direction)
+                limits = [node_attrs["center"] + ws_direction*node_attrs["length"]/2,
+                          node_attrs["center"] - ws_direction*node_attrs["length"]/2]
+                node_attrs["viz_data"] = limits
+                node_attrs["viz_type"] = "Line"
+                node_attrs["viz_feat"] = node_viz_feat_mapping[node_attrs["type"]]
+                node_attrs["linewidth"] = 2.0
+                node_attrs["alpha"] = 1.0
+
+            # if node_attrs["type"] in ["wall_ws"]:
+            #     print("flagFFFFFFFFFFFFFFFFFFFFFFFFS")
+            #     ws_id = graph.get_neighbourhood_graph(node_id).filter_graph_by_node_types(["ws"])
+            #     room_id = graph.get_neighbourhood_graph(node_id).filter_graph_by_node_types(["ws"])
+            #     # filter_graph_by_node_types(["ws"])
+
+            else:
+                nodes_to_remove.append(node_id)
+
+        graph.remove_nodes(nodes_to_remove)
+
+        return graph
+
 
     def deserialize_and_transform_to_GWraph(self):
+        msd_dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),"msd")
+        msd_dataset_dir = "/home/adminpc/workspaces/reasoning_ws/src/msd/"
+        print(msd_dataset_dir)
+        sys.path.append(msd_dataset_dir)
+
         self.graphs["original"].clear()
         self.graphs["noise"].clear()
         self.graphs["extended"].clear()

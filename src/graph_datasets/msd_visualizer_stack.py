@@ -6,12 +6,12 @@ import json, os, time, sys
 
 from graph_datasets.config import get_config as get_datasets_config
 # from graph_reasoning.config import get_config as get_reasoning_config
-synteticdataset_settings = get_datasets_config("graph_reasoning")
-synteticdataset_settings["base_graphs"]["n_buildings"] = 1
+synteticdataset_settings = get_datasets_config("msd")
 
-dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = None, dataset_name = "test")
+dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
+
 # filtered_nxdataset = dataset_generator.get_filtered_datset(settings_hdata["nodes"],settings_hdata["edges"])["noise"]
-extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["noise"], "training", "training")
+extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["original"], "training", "training")
 # normalized_nxdatset = dataset_generator.normalize_features_nxdatset(extended_nxdatset)
 # view1 = dataset_generator.graphs["views"][0].filter_graph_by_node_attributes_containted({"view" : 1})
 # view2 = dataset_generator.graphs["views"][0].filter_graph_by_node_attributes_containted({"view" : 2})
@@ -25,7 +25,7 @@ extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs[
 all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
 
 
-for graph in all_dataset:
+for graph in all_dataset[:10]:
     # graph.remove_all_edges()
     visualize_nxgraph(graph, "train data", visualize_alone=True)
     plt.show()
