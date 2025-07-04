@@ -1261,8 +1261,11 @@ class SyntheticDatasetGenerator():
         edge_attrs = graph.get_attributes_of_all_edges()
 
         nodes_to_remove = []
+        current_node_id = 0
+        node_id_mapping = {}
         for node_id, node_attrs in node_attrs:
-            
+            node_id_mapping[node_id] = current_node_id
+            current_node_id += 1
             if node_attrs["type"] in ["room", "wall","floor","building","window",'door']:
                 node_attrs["center"] = np.array(node_attrs["center"])
                 node_attrs["viz_data"] = node_attrs["center"]
@@ -1280,6 +1283,7 @@ class SyntheticDatasetGenerator():
                 ws_direction /= np.linalg.norm(ws_direction)
                 limits = [node_attrs["center"] + ws_direction*node_attrs["length"]/2,
                           node_attrs["center"] - ws_direction*node_attrs["length"]/2]
+                node_attrs["limits"] = limits
                 node_attrs["viz_data"] = limits
                 node_attrs["viz_type"] = "Line"
                 node_attrs["viz_feat"] = node_viz_feat_mapping[node_attrs["type"]]
@@ -1296,6 +1300,7 @@ class SyntheticDatasetGenerator():
                 nodes_to_remove.append(node_id)
 
         graph.remove_nodes(nodes_to_remove)
+        graph.relabel_nodes(node_id_mapping)
 
         return graph
 

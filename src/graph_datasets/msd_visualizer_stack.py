@@ -1,5 +1,5 @@
 from SyntheticDatasetGenerator import SyntheticDatasetGenerator
-from graph_visualizer import visualize_nxgraph
+from graph_visualizer import visualize_nxgraph, visualize_nxgraph_3d
 import matplotlib.pyplot as plt
 import json, os, time, sys
 
@@ -27,5 +27,5 @@ all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_n
 
 for graph in all_dataset[:10]:
     # graph.remove_all_edges()
-    visualize_nxgraph(graph, "train data", visualize_alone=True)
+    visualize_nxgraph_3d(graph, "train data", visualize_alone=True)
     plt.show()
