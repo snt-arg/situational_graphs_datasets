@@ -1,5 +1,5 @@
 from SyntheticDatasetGenerator import SyntheticDatasetGenerator
-from graph_visualizer import visualize_nxgraph
+from graph_visualizer import visualize_nxgraph, visualize_nxgraph_3d
 from InteractiveGraphVisualizer import InteractiveGraphVisualizer
 
 import matplotlib.pyplot as plt
@@ -9,7 +9,7 @@ import json, os, time, sys
 from graph_datasets.config import get_config as get_datasets_config
 from graph_reasoning.config import get_config as get_reasoning_config
 synteticdataset_settings = get_datasets_config("ifh")
-synteticdataset_settings["source"]["base_graphs"]["n_buildings"] = 1000
+synteticdataset_settings["source"]["base_graphs"]["n_buildings"] = 10
 
 dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
 dataset_generator.create_dataset()
@@ -31,7 +31,7 @@ all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_n
 for graph in all_dataset:
     # graph.remove_all_edges()
     
-    visualize_nxgraph(graph, "train data", visualize_alone=True)
+    visualize_nxgraph_3d(graph, "train data", visualize_alone=True)
     plt.show()
 
 # save_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/test/ssg.pickle"

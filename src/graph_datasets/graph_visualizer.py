@@ -110,7 +110,7 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
             ax.text(tag_center[0], tag_center[1], tag_center[2], str(node_data[0]), fontsize=10, color='black')
     edges_data = graph.get_attributes_of_all_edges()
     for edge_data in edges_data:
-        points = np.array([to_3d(nodes_data[edge_data[0]]["center"]), to_3d(nodes_data[edge_data[1]]["center"])])
+        points = np.array([to_3d(nodes_data[edge_data[0]]["viz_data"]), to_3d(nodes_data[edge_data[1]]["viz_data"])])
         color = _mpl_color_from_feat(edge_data[2].get("viz_feat", "k"))
         linewidth = edge_data[2].get("linewidth", 1.5)
         alpha = edge_data[2].get("alpha", 1.0)

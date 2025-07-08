@@ -460,6 +460,23 @@ class SyntheticDatasetGenerator():
             graph.add_edges(new_edges)
 
         return graph
+    
+    def merge_edge_types(self, graph, common_edge_type):
+        new_graph = copy.deepcopy(graph)
+        edges_attributes = new_graph.graph.edges(data=True)
+        for edge in edges_attributes:
+            if not isinstance(edge[2], dict):
+                print(f"Edge {edge[2]} is not a dict, skipping.")
+                continue
+
+        for edge_attributes in edges_attributes:
+            source_node_id, target_node_id, edge_attrs = edge_attributes
+            if edge_attrs["type"] != common_edge_type:
+                new_graph.update_edge_attrs((source_node_id, target_node_id), {"type": common_edge_type, "viz_feat" : "grey"})
+
+        # self.logger.info(f"Edges after merging: {[edge[2]['type'] for edge in new_graph.get_attributes_of_all_edges()]}")
+
+        return new_graph
             
     def set_dataset(self, tag, nxdata):
         self.graphs[tag] = nxdata
@@ -880,6 +897,9 @@ class SyntheticDatasetGenerator():
 
             elif pp_settings["pp_name"] == "add_random_objects":
                 working_graph = self.add_random_objects(working_graph, pp_settings["max_obj"])
+
+            elif pp_settings["pp_name"] == "merge_edge_types":
+                working_graph = self.merge_edge_types(working_graph, pp_settings["common_type"])
 
             return working_graph
 

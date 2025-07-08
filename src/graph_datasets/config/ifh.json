@@ -39,7 +39,30 @@
         "training": [
             {"pp_name": "merge_room", "ratio": 0.5},
             {"pp_name": "unfreeze"},
-            {"pp_name": "remove_self_loops"}
+            {"pp_name": "remove_self_loops"},
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
+            {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
+                [
+                    "ws",
+                    "training",
+                    "ws"
+                ],
+                [
+                    "ws",
+                    "ws_belongs_room",
+                    "room"
+                ],[
+                    "ws",
+                    "ws_belongs_wall",
+                    "wall"
+                ],[
+                    "room",
+                    "room_belongs_floor",
+                    "floor"
+                ]
+            ]},
+            {"pp_name": "add_floor_node"},
+            {"pp_name": "merge_edge_types", "common_type":"common"}
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
@@ -49,7 +72,7 @@
     },
     "initial_features": {
         "nodes": {
-            "ws": ["length"], "room":"center", "wall":"center"
+            "ws": ["length"], "room":"center", "wall":"center", "floor":"center"
         },
         "edges": {
             "[ws,ws]": ["centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
