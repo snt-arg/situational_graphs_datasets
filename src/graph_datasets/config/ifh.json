@@ -8,7 +8,7 @@
             "min_room_entry_size" : [10,10],
             "room_center_distances" : [0.1,0.1],
             "wall_thickness" : [0.16,0.2],
-            "n_buildings" : 10
+            "n_buildings" : 1000
         }
     },
     "noise":{
@@ -61,8 +61,11 @@
                     "floor"
                 ]
             ]},
+            {"pp_name": "add_random_objects", "max_obj": 2},
             {"pp_name": "add_floor_node"},
-            {"pp_name": "merge_edge_types", "common_type":"common"}
+            {"pp_name": "add_stories", "add_floor_nodes": false,"n_stories": 4},
+            {"pp_name": "merge_edge_types", "common_type":"common"},
+            {"pp_name": "to_undirected"}
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},

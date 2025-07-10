@@ -28,12 +28,12 @@ extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs[
 all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
 
 
-for graph in all_dataset:
+# for graph in all_dataset:
     # graph.remove_all_edges()
     
-    visualize_nxgraph_3d(graph, "train data", visualize_alone=True)
-    plt.show()
+    # visualize_nxgraph_3d(graph, "train data", visualize_alone=True)
+    # plt.show()
 
-# save_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/test/ssg.pickle"
-# # dataset_generator.save_wrappers_to_pickle(extended_nxdatset['train'], save_path)
-# dataset_generator.save_networkx_graphs_to_pickle(extended_nxdatset['train'], save_path)
+save_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/test/ssg.pickle"
+# dataset_generator.save_wrappers_to_pickle(extended_nxdatset['train'], save_path)
+dataset_generator.save_networkx_graphs_to_pickle(extended_nxdatset['train'], save_path)

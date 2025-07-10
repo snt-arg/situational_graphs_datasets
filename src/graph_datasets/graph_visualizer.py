@@ -12,19 +12,19 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids
     # fig.clf()
     ax = fig.add_subplot(111)
     for node_data in nodes_data:
-        if node_data[1]["viz_type"] == "Point":
+        if node_data[1]["viz"]["type"] == "Point":
             if "markersize" in node_data[1].keys():
                 markersize = node_data[1]["markersize"]
             else:
                 markersize = 1.0
-            ax.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"], markersize=markersize*10)
-            tag_center = node_data[1]["viz_data"]
+            ax.plot(node_data[1]["viz"]["center"][0], node_data[1]["viz"]["center"][1], node_data[1]["viz"]["center"], markersize=markersize*10)
+            tag_center = node_data[1]["viz"]["center"]
 
-        elif node_data[1]["viz_type"] == "Line":
-            viz_data = np.array(node_data[1]["viz_data"])
-            linewidth = node_data[1]["linewidth"] if "linewidth" in node_data[1].keys() else 1.5
-            
-            ax.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz_feat"], linewidth=linewidth)
+        elif node_data[1]["viz"]["type"] == "Line":
+            viz_data = np.array(node_data[1]["viz"]["limits"])
+            linewidth = node_data[1]["viz"]["linewidth"] if "linewidth" in node_data[1]["viz"].keys() else 1.5
+
+            ax.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz"]["feat"], linewidth=linewidth)
 
             norm_line = np.stack([node_data[1]["center"], node_data[1]["center"] + node_data[1]["normal"]/4])
             ax.plot(norm_line[:,0], norm_line[:,1], "b", linewidth=linewidth)
@@ -35,7 +35,7 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids
 
     edges_data = graph.get_attributes_of_all_edges()
     for edge_data in edges_data:
-        points = np.array([nodes_data[edge_data[0]]["center"], nodes_data[edge_data[1]]["center"]])
+        points = np.array([nodes_data[edge_data[0]]["viz"]["center"], nodes_data[edge_data[1]]["viz"]["center"]])
         viz_feat = edge_data[2]["viz_feat"] if "viz_feat" in edge_data[2].keys() else ""
         linewidth = edge_data[2]["linewidth"] if "linewidth" in edge_data[2].keys() else 1.5
         alpha = edge_data[2]["alpha"] if "alpha" in edge_data[2].keys() else 1.0
@@ -77,11 +77,11 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
     # For legend
     legend_handles = {}
     for node_data in nodes_data:
-        if node_data[1]["viz_type"] == "Point":
+        if node_data[1]["viz"]["type"] == "Point":
             markersize = node_data[1].get("markersize", 1.0)
-            viz_data = to_3d(node_data[1]["viz_data"])
-            color = _mpl_color_from_feat(node_data[1]["viz_feat"])
-            marker = node_data[1]["viz_feat"][1] if len(node_data[1]["viz_feat"]) > 1 else 'o'
+            viz_data = to_3d(node_data[1]["viz"]["center"])
+            color = _mpl_color_from_feat(node_data[1]["viz"]["feat"])
+            marker = node_data[1]["viz"]["feat"][1] if len(node_data[1]["viz"]["feat"]) > 1 else 'o'
             label = node_data[1].get("type", "Point")
             # Only add one handle per label
             if label not in legend_handles:
@@ -89,11 +89,11 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
                 legend_handles[label] = h
             ax.scatter(viz_data[0], viz_data[1], viz_data[2], marker=marker, s=markersize*30, color=color)
             tag_center = viz_data
-        elif node_data[1]["viz_type"] == "Line":
-            viz_data = np.array(node_data[1]["viz_data"])
-            linewidth = node_data[1].get("linewidth", 1.5)
-            color = _mpl_color_from_feat(node_data[1]["viz_feat"])
-            label = node_data[1].get("type", "Line")
+        elif node_data[1]["viz"]["type"] == "Line":
+            viz_data = np.array(node_data[1]["viz"]["limits"])
+            linewidth = node_data[1]["viz"].get("linewidth", 1.5)
+            color = _mpl_color_from_feat(node_data[1]["viz"]["feat"])
+            label = node_data[1]["viz"].get("type", "Line")
             if viz_data.shape[1] == 2:
                 viz_data = np.hstack([viz_data, np.zeros((viz_data.shape[0], 1))])
             # Only add one handle per label
@@ -110,7 +110,7 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
             ax.text(tag_center[0], tag_center[1], tag_center[2], str(node_data[0]), fontsize=10, color='black')
     edges_data = graph.get_attributes_of_all_edges()
     for edge_data in edges_data:
-        points = np.array([to_3d(nodes_data[edge_data[0]]["viz_data"]), to_3d(nodes_data[edge_data[1]]["viz_data"])])
+        points = np.array([to_3d(nodes_data[edge_data[0]]["viz"]["center"]), to_3d(nodes_data[edge_data[1]]["viz"]["center"])])
         color = _mpl_color_from_feat(edge_data[2].get("viz_feat", "k"))
         linewidth = edge_data[2].get("linewidth", 1.5)
         alpha = edge_data[2].get("alpha", 1.0)
@@ -171,25 +171,25 @@ def visualize_nxgraph_pair(graph1, graph2, image_name, visualize_alone=False, g1
         edges_data2 = graph2.get_attributes_of_all_edges()
           
     for node_data in nodes_data1:
-        if node_data[1]["viz_type"] == "Point":
-            ax1.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"])
-        elif node_data[1]["viz_type"] == "Line":
-            viz_data = np.array(node_data[1]["viz_data"])
-            ax1.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz_feat"])
+        if node_data[1]["viz"]["type"] == "Point":
+            ax1.plot(node_data[1]["viz"]["center"][0], node_data[1]["viz"]["center"][1], node_data[1]["viz"]["feat"])
+        elif node_data[1]["viz"]["type"] == "Line":
+            viz_data = np.array(node_data[1]["viz"]["limits"])
+            ax1.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz"]["feat"])
     for node_data in nodes_data2:
-        if node_data[1]["viz_type"] == "Point":
-            ax2.plot(node_data[1]["viz_data"][0], node_data[1]["viz_data"][1], node_data[1]["viz_feat"])
-        elif node_data[1]["viz_type"] == "Line":
-            viz_data = np.array(node_data[1]["viz_data"])
-            ax2.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz_feat"])
-    
+        if node_data[1]["viz"]["type"] == "Point":
+            ax2.plot(node_data[1]["viz"]["center"][0], node_data[1]["viz"]["center"][1], node_data[1]["viz"]["feat"])
+        elif node_data[1]["viz"]["type"] == "Line":
+            viz_data = np.array(node_data[1]["viz"]["limits"])
+            ax2.plot(viz_data[:,0], viz_data[:,1], node_data[1]["viz"]["feat"])
+
     for edge_data in edges_data1:
         points = np.array([nodes_data1[edge_data[0]]["center"], nodes_data1[edge_data[1]]["center"]])
-        ax1.plot(points[:,0], points[:,1], edge_data[2]["viz_feat"])
+        ax1.plot(points[:,0], points[:,1], edge_data[2]["viz"]["feat"])
     for edge_data in edges_data2:
         points = np.array([nodes_data2[edge_data[0]]["center"], nodes_data2[edge_data[1]]["center"]])
-        ax2.plot(points[:,0], points[:,1], edge_data[2]["viz_feat"])
-    
+        ax2.plot(points[:,0], points[:,1], edge_data[2]["viz"]["feat"])
+
     ax1.set_aspect('equal', adjustable='datalim')
     ax2.set_aspect('equal', adjustable='datalim')
     
@@ -236,11 +236,11 @@ def plot_matching_with_visualization(graph1, graph2, match_result, image_name="G
         pos1[node_id] = center  # Save for matching
 
         # Plot nodes
-        if node_attr["viz_type"] == "Point":
-            ax.plot(center[0], center[1], node_attr["viz_feat"], markersize=5)
-        elif node_attr["viz_type"] == "Line":
-            viz_data = np.array(node_attr["viz_data"])
-            ax.plot(viz_data[:, 0], viz_data[:, 1], node_attr["viz_feat"])
+        if node_attr["viz"]["type"] == "Point":
+            ax.plot(center[0], center[1], node_attr["viz"]["feat"], markersize=5)
+        elif node_attr["viz"]["type"] == "Line":
+            viz_data = np.array(node_attr["viz"]["limits"])
+            ax.plot(viz_data[:, 0], viz_data[:, 1], node_attr["viz"]["feat"])
 
     # Plot second graph (graph2) with offset
     for node_data in nodes_data2:
@@ -250,11 +250,11 @@ def plot_matching_with_visualization(graph1, graph2, match_result, image_name="G
         pos2[node_id] = center + offset  # Apply offset to shift the second graph
 
         # Plot nodes
-        if node_attr["viz_type"] == "Point":
-            ax.plot(center[0] + offset[0], center[1] + offset[1], node_attr["viz_feat"], markersize=5)
-        elif node_attr["viz_type"] == "Line":
-            viz_data = np.array(node_attr["viz_data"])
-            ax.plot(viz_data[:, 0] + offset[0], viz_data[:, 1] + offset[1], node_attr["viz_feat"])
+        if node_attr["viz"]["type"] == "Point":
+            ax.plot(center[0] + offset[0], center[1] + offset[1], node_attr["viz"]["feat"], markersize=5)
+        elif node_attr["viz"]["type"] == "Line":
+            viz_data = np.array(node_attr["viz"]["limits"])
+            ax.plot(viz_data[:, 0] + offset[0], viz_data[:, 1] + offset[1], node_attr["viz"]["feat"])
 
     # Plot edges for both graphs
     for edge_data in edges_data1:

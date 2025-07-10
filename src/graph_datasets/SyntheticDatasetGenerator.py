@@ -39,6 +39,8 @@ from graph_matching.utils import relative_positions, segments_distance, closest_
 # graph_reasoning_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_reasoning")
 # sys.path.append(graph_reasoning_dir)
 
+viz_data_base = {"type": "Point", "feat": 'ro', "data": np.array([]), "linewidth": 1, "alpha": 1.0, "size": 1}
+
 
 class SyntheticDatasetGenerator():
 
@@ -50,6 +52,9 @@ class SyntheticDatasetGenerator():
         self.dataset_name = dataset_name
         self.dataset_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), self.report_path, self.dataset_name)
         self.graphs = {"original":[],"noise":[],"views":[],"extended":[]}
+
+        self.viz_center_offsets = {"ws": np.array([0, 0, 0]), "room": np.array([0, 0, 2]), "wall": np.array([0, 0, 1]),\
+                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, -2]), "object": np.array([0, 0, 0.5])}
 
         if settings["source"]["type"] == "synthetic":
             self.max_n_rooms = 0
@@ -226,9 +231,13 @@ class SyntheticDatasetGenerator():
                 room_center = R.from_euler("Z", noise_global_rotation_angle, degrees= True).apply(np.array(noise_global_center) + np.array(room_center) + center_noise)
                 # room_area = abs(R.from_euler("Z", room_orientation_angle, degrees= True).apply(room_area))
             geometric_info = room_center
-            
+            viz_center = room_center + self.viz_center_offsets["room"]
+
+            room_viz = copy.deepcopy(viz_data_base)
+            room_viz.update({"type": "Point", "feat": 'ro', "center": viz_center, "linewidth": 1, "alpha": 1.0, "size": 1})
+
             graph.add_nodes([(node_ID,{"type" : "room","center" : room_center, "x": room_center, "orientation_angle": room_orientation_angle, "area" : room_area, "Geometric_info" : geometric_info,\
-                                            "viz_type" : "Point", "viz_data" : room_center, "viz_feat" : 'ro'})])
+                                            "viz" : room_viz})])
         if add_multiview:
             num_multiviews = self.settings["multiview"]["number"]
             overlapping = self.settings["multiview"]["overlapping"]
@@ -279,25 +288,18 @@ class SyntheticDatasetGenerator():
                 color_map = ["green", "orange", "red", "pink"]
                 color_map = ["black", "black", "black", "black"]
 
+                ws_viz = copy.deepcopy(viz_data_base)
+                ws_viz.update({"type": "Line", "feat": color_map[i], "limits" : [ws_limit_1,ws_limit_2],"center": ws_center, "linewidth": 2.0, "alpha": 0.5, "size": 1})
+
                 graph.add_nodes([(node_ID,{"type" : "ws","center" : ws_center, "y" : y, "normal" : ws_normal, "Geometric_info" : geometric_info,\
-                                           "viz_type" : "Line", "viz_data" : [ws_limit_1,ws_limit_2], "viz_feat" : color_map[i],\
                                            "canonic_normal_index" : canonic_normals[i], "linewidth": 2.0, "limits": [ws_limit_1,ws_limit_2],
-                                           "length": ws_length})])
+                                           "length": ws_length, "viz" : ws_viz})])
                 graph.add_edges([(node_ID, node_data[0], {"type": "ws_belongs_room", "x": [], "viz_feat" : 'red', "linewidth":1.0, "alpha":0.5})])
                 
                 ### Fully connected version
                 for prior_ws_i in range(i):
                     x = segments_distance(graph.get_attributes_of_node(node_ID)["limits"],graph.get_attributes_of_node(node_ID-(prior_ws_i+1))["limits"])
                     graph.add_edges([(node_ID, node_ID-(prior_ws_i+1), {"type": "ws_same_room", "x":x, "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
-                # ### Only consecutive wall surfaces
-                # if i > 0:
-                #     graph.add_edges([(node_ID, node_ID - 1, {"type": "ws_same_room", "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
-                # if i == 3:
-                #     graph.add_edges([(node_ID, node_ID - 3, {"type": "ws_same_room", "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
-                # ### Only opposite wall surfaces
-                # if i > 1:
-                #     graph.add_edges([(node_ID, node_ID - 2, {"type": "ws_same_room", "viz_feat": "b", "linewidth":1.0, "alpha":0.5})])
-                ###
 
                 if add_multiview:
                     graph.update_node_attrs(node_ID, {"view" : graph.get_attributes_of_node(node_data[0])["view"]})
@@ -328,8 +330,13 @@ class SyntheticDatasetGenerator():
                             compared_room_neigh_ws_center = compared_room_neigh.get_attributes_of_node(compared_room_neigh_ws_id)["center"]
 
                             wall_center = np.array(np.array(current_room_neigh_ws_center) + (np.array(compared_room_neigh_ws_center) - np.array(current_room_neigh_ws_center))/2)
+                            viz_wall_center = wall_center + self.viz_center_offsets["wall"]
                             node_ID = max(graph.get_nodes_ids(), default=-1) + 1
-                            graph.add_nodes([(node_ID,{"type" : "wall", "x" : wall_center, "center" : wall_center,"viz_type" : "Point", "viz_data" : wall_center, "viz_feat" : 'mo'})])
+
+                            wall_viz = copy.deepcopy(viz_data_base)
+                            wall_viz.update({"type": "Point", "feat": "mo", "limit" : [ws_limit_1,ws_limit_2],"center": viz_wall_center})
+
+                            graph.add_nodes([(node_ID,{"type" : "wall", "x" : wall_center, "center" : wall_center, "viz" : wall_viz})])
                             graph.add_edges([(current_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall", "x": [], "viz_feat": "m", "linewidth":1.0, "alpha":0.5}),\
                                              (compared_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall","viz_feat": "m", "x": [], "linewidth":1.0, "alpha":0.5})])
                             graph.add_edges([(current_room_neigh_ws_id, compared_room_neigh_ws_id, {"type": "ws_same_wall", "x": [], "viz_feat": "orange", "linewidth":1.0, "alpha":0.5})])
@@ -345,8 +352,12 @@ class SyntheticDatasetGenerator():
         room_centers = [attr[1]["center"] for attr in rooms_attrs]
         floor_center = np.array(room_centers).sum(axis=0) / len(room_centers)
         floor_node_id = max(graph.get_nodes_ids()) + 1
-        graph.add_nodes([(floor_node_id,{"type" : "floor", "x" : floor_center, "center" : floor_center,\
-                            "viz_type" : "Point", "viz_data" : floor_center, "viz_feat" : 'go'})])
+
+        viz_floor_center = floor_center + self.viz_center_offsets["floor"]
+        floor_viz = copy.deepcopy(viz_data_base)
+        floor_viz.update({"type": "Point", "feat": "go","center": viz_floor_center})
+
+        graph.add_nodes([(floor_node_id,{"type" : "floor", "x" : floor_center, "center" : floor_center, "viz" : floor_viz})])
         for room_id in room_ids:
             graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "g",\
                                                         "linewidth":1.0, "alpha":0.5})])
@@ -358,10 +369,17 @@ class SyntheticDatasetGenerator():
         floors_attrs = graph.filter_graph_by_node_attributes({"type" : "floor"}).get_attributes_of_all_nodes()
         floor_ids = [attr[0] for attr in floors_attrs]
         floor_centers = [attr[1]["center"] for attr in floors_attrs]
-        floor_center = np.array(floor_centers).sum(axis=0) / len(floor_centers)
+        building_center = np.array(floor_centers).sum(axis=0) / len(floor_centers)
         floor_node_id = max(graph.get_nodes_ids()) + 1
-        graph.add_nodes([(floor_node_id,{"type" : "builing", "x" : floor_center, "center" : floor_center,\
-                            "viz_type" : "Point", "viz_data" : floor_center, "viz_feat" : 'co'})])
+
+
+        viz_building_center = copy.deepcopy(building_center)
+        viz_building_center[2] = 0  # Ensure z-coordinate is zero for visualization
+        viz_building_center += self.viz_center_offsets["building"]
+        building_viz = copy.deepcopy(viz_data_base)
+        building_viz.update({"type": "Point", "feat": "co","center": viz_building_center})
+
+        graph.add_nodes([(floor_node_id,{"type" : "building", "x" : building_center, "center" : building_center, "viz" : building_viz})])
         for floor_id in floor_ids:
             graph.add_edges([(floor_id, floor_node_id, {"type": "floor_belongs_building", "x": [],"viz_feat": "c",\
                                                         "linewidth":1.0, "alpha":0.5})])
@@ -453,12 +471,14 @@ class SyntheticDatasetGenerator():
             new_edges = []
             for obj_pose in obj_poses:
                 obj_id = max(graph.get_nodes_ids()) + 1
-                graph.add_nodes([(obj_id,{"type" : "object", "x" : obj_pose, "center" : obj_pose,\
-                            "viz_type" : "Point", "viz_data" : obj_pose, "viz_feat" : 'ks'})])
+                
+                viz_obj_pose = obj_pose + self.viz_center_offsets["object"]
+                obj_viz = copy.deepcopy(viz_data_base)
+                obj_viz.update({"type": "Point", "feat": 'ks', "center": viz_obj_pose})
+
+                graph.add_nodes([(obj_id,{"type" : "object", "x" : obj_pose, "center" : obj_pose, "viz" : obj_viz})])
                 new_edges.append((obj_id, room_id, {"type": "object_same_room", "x":[], "viz_feat": "black", "linewidth":1.0, "alpha":0.5}))
             
-            graph.add_edges(new_edges)
-
         return graph
     
     def merge_edge_types(self, graph, common_edge_type):
@@ -473,8 +493,6 @@ class SyntheticDatasetGenerator():
             source_node_id, target_node_id, edge_attrs = edge_attributes
             if edge_attrs["type"] != common_edge_type:
                 new_graph.update_edge_attrs((source_node_id, target_node_id), {"type": common_edge_type, "viz_feat" : "grey"})
-
-        # self.logger.info(f"Edges after merging: {[edge[2]['type'] for edge in new_graph.get_attributes_of_all_edges()]}")
 
         return new_graph
             
@@ -693,7 +711,7 @@ class SyntheticDatasetGenerator():
                                 new_limits = [new_center + ws_direction*new_length/2, new_center - ws_direction*new_length/2]
                                 ws_attrs["center"] = new_center
                                 ws_attrs["limits"] = new_limits
-                                ws_attrs["viz_data"] = new_limits
+                                ws_attrs["viz"]["limits"] = new_limits
                                 ws_attrs["length"] = new_length
             
             elif pp_settings["pp_name"] == "ws_split":
@@ -743,7 +761,7 @@ class SyntheticDatasetGenerator():
                                 new_ws_attrs = copy.deepcopy(ws_attrs)
                                 new_ws_attrs["center"] = (new_limits[0] + new_limits[1]) / 2
                                 new_ws_attrs["limits"] = new_limits
-                                new_ws_attrs["viz_data"] = new_limits
+                                new_ws_attrs["viz"]["limits"] = new_limits
                                 new_ws_attrs["length"] = np.linalg.norm(new_limits[1] - new_limits[0])
 
                                 nodes_to_add.append((new_node_ID,new_ws_attrs))
@@ -796,7 +814,7 @@ class SyntheticDatasetGenerator():
                     if "center" in node_attrs:
                         new_center = rotation_matrix_2d @ (node_attrs["center"][:2] + global_translation)
                         node_attrs["center"][:2] = new_center
-                        node_attrs["viz_data"] = new_center
+                        node_attrs["viz"]["center"] = new_center
 
                     if "normal" in node_attrs:
                         new_normal = rotation_matrix_2d @ node_attrs["normal"][:2]
@@ -830,7 +848,7 @@ class SyntheticDatasetGenerator():
                         # --- TRANSLATE ONLY THE CENTER ---
                         new_center = node_attrs["center"][:2] + local_translation
                         node_attrs["center"][:2] = new_center
-                        node_attrs["viz_data"] = new_center
+                        node_attrs["viz"]["center"] = new_center
 
                         # --- ROTATE ONLY THE NORMAL ---
                         if "normal" in node_attrs:
@@ -865,7 +883,7 @@ class SyntheticDatasetGenerator():
                         # remove z coordinate from center and normal
                         node_attrs["center"] = node_attrs["center"][:2]
                         node_attrs["normal"] = node_attrs["normal"][:2]
-                        node_attrs["viz_data"] = node_attrs["center"][:2]
+                        node_attrs["viz"]["center"] = node_attrs["center"][:2]
                         #change field name from width to length
                         if("width" in node_attrs):
                             node_attrs["length"] = node_attrs.pop("width")
@@ -900,6 +918,10 @@ class SyntheticDatasetGenerator():
 
             elif pp_settings["pp_name"] == "merge_edge_types":
                 working_graph = self.merge_edge_types(working_graph, pp_settings["common_type"])
+
+            elif pp_settings["pp_name"] == "to_undirected":
+                working_graph.to_undirected()
+
 
             return working_graph
 
@@ -955,7 +977,7 @@ class SyntheticDatasetGenerator():
                             _, min_col = np.unravel_index(np.argmin(distances), distances.shape)
                             min_dist_idx = np.argmin(distances[:,1-min_col])
                             ws_node_attrs["limits"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
-                            ws_node_attrs["viz_data"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
+                            ws_node_attrs["viz"]["limits"][min_col] = copy.deepcopy(np.array(other_room_ws_closest_points[min_dist_idx]))
                             ws_node_attrs["center"] = copy.deepcopy((np.array(ws_node_attrs["limits"][0]) + np.array(ws_node_attrs["limits"][1])) / 2)
                             ws_length = np.linalg.norm(ws_node_attrs["limits"][0] - ws_node_attrs["limits"][1])
                             # feature_dict = {"ws_center": ws_node_attrs["center"], "ws_normal": ws_node_attrs["normal"], "ws_length": ws_length}
@@ -970,7 +992,7 @@ class SyntheticDatasetGenerator():
                                 new_wall_center = np.array((np.array(working_graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(ws_node_attrs["center"])) / 2)
                                 wall_attrs = working_graph.get_attributes_of_node(related_wall)
                                 wall_attrs["center"] = list(new_wall_center)
-                                wall_attrs["viz_data"] = new_wall_center
+                                wall_attrs["viz"]['center'] = new_wall_center + self.viz_center_offsets["wall"]
                                 # wall_attrs["x"] = new_wall_center
 
                     ### merge same plane ws
@@ -994,7 +1016,7 @@ class SyntheticDatasetGenerator():
 
                                 ws0_attrs = working_graph.get_attributes_of_node(combination[0])
                                 ws0_attrs["limits"] = list(new_limits)
-                                ws0_attrs["viz_data"] = list(new_limits)
+                                ws0_attrs["viz"]["limits"] = list(new_limits)
                                 ws0_attrs["center"] = new_center
                                 # ws0_length = np.linalg.norm(ws0_attrs["limits"][0] - ws0_attrs["limits"][1])
 
@@ -1022,7 +1044,7 @@ class SyntheticDatasetGenerator():
                                         new_wall_center = (np.array(working_graph.get_attributes_of_node(neigh_wall_ws[0])["center"]) + np.array(new_center)) / 2
                                         wall_attrs = working_graph.get_attributes_of_node(related_wall)
                                         wall_attrs["center"] = list(new_wall_center)
-                                        wall_attrs["viz_data"] = new_wall_center
+                                        wall_attrs["viz"]["center"] = new_wall_center + self.viz_center_offsets["wall"]
                                         wall_attrs["x"] = new_wall_center
                 
 
@@ -1042,7 +1064,7 @@ class SyntheticDatasetGenerator():
 
                     room1_attrs["center"] = room_center
                     room1_attrs["x"] = room_center
-                    room1_attrs["viz_data"] = room_center
+                    room1_attrs["viz"]["center"] = room_center + self.viz_center_offsets["room"]
                     working_graph.update_node_attrs(room_nodes_ids[0], room1_attrs)
 
                     combinations = list(itertools.product(room1_ws_nodes_ids, room2_ws_nodes_ids))
@@ -1288,9 +1310,9 @@ class SyntheticDatasetGenerator():
             current_node_id += 1
             if node_attrs["type"] in ["room", "wall","floor","building"]:
                 node_attrs["center"] = np.array(node_attrs["center"])
-                node_attrs["viz_data"] = node_attrs["center"]
-                node_attrs["viz_type"] = "Point"
-                node_attrs["viz_feat"] = node_viz_feat_mapping[node_attrs["type"]]
+                node_attrs["viz"]["center"] = node_attrs["center"]
+                node_attrs["viz"]["type"] = "Point"
+                node_attrs["viz"]["feat"] = node_viz_feat_mapping[node_attrs["type"]]
                 node_attrs["linewidth"] = 1.0
                 node_attrs["alpha"] = 0.5
 
@@ -1304,11 +1326,11 @@ class SyntheticDatasetGenerator():
                 limits = [node_attrs["center"] + ws_direction*node_attrs["length"]/2,
                           node_attrs["center"] - ws_direction*node_attrs["length"]/2]
                 node_attrs["limits"] = limits
-                node_attrs["viz_data"] = limits
-                node_attrs["viz_type"] = "Line"
-                node_attrs["viz_feat"] = node_viz_feat_mapping[node_attrs["type"]]
-                node_attrs["linewidth"] = 2.0
-                node_attrs["alpha"] = 1.0
+                node_attrs["viz"]["limits"] = limits
+                node_attrs["viz"]["type"] = "Line"
+                node_attrs["viz"]["feat"] = node_viz_feat_mapping[node_attrs["type"]]
+                node_attrs["viz"]["linewidth"] = 2.0
+                node_attrs["viz"]["alpha"] = 1.0
 
             elif node_attrs["type"] in ["wall_ws"]:
                 room_id = list(copy.deepcopy(graph).get_neighbourhood_graph(node_id).filter_graph_by_node_types(["room"]).get_nodes_ids())[0]
