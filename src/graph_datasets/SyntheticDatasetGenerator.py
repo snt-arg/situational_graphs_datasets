@@ -31,7 +31,7 @@ import plot as pl
 from graph_wrapper.GraphWrapper import GraphWrapper
 # graph_datasets_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_datasets")
 # sys.path.append(graph_datasets_dir)
-from graph_datasets.graph_visualizer import visualize_nxgraph
+from graph_datasets.graph_visualizer import visualize_nxgraph, visualize_nxgraph_3d
 from graph_datasets.NodeEdgeFeatureEmbeddingBuildier import NodeEdgeFeatureEmbeddingBuildier
 # graph_matching_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_matching")
 # sys.path.append(graph_matching_dir)
@@ -796,7 +796,7 @@ class SyntheticDatasetGenerator():
                 if pp_settings["msd"]: 
                     pl.plot_a_graph([working_graph.graph],viz_room_normals=True,viz_walls=False)
                 else:
-                    fig = visualize_nxgraph(working_graph, pp_settings["fig_name"], visualize_alone=pp_settings["visualize_alone"])
+                    fig = visualize_nxgraph_3d(working_graph, pp_settings["fig_name"], visualize_alone=pp_settings["visualize_alone"])
                 if pp_settings["save_path"]:
                     fig.savefig(pp_settings["save_path"], bbox_inches='tight')
             elif pp_settings["pp_name"] == "remove_self_loops":
@@ -1374,7 +1374,7 @@ class SyntheticDatasetGenerator():
     def deserialize_and_transform_to_GWraph(self):
         msd_dataset_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),"msd")
         msd_dataset_dir = "/home/adminpc/workspaces/reasoning_ws/src/msd/"
-        print(msd_dataset_dir)
+
         sys.path.append(msd_dataset_dir)
 
         self.graphs["original"].clear()
