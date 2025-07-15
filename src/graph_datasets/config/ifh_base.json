@@ -41,10 +41,21 @@
             {"pp_name": "unfreeze"},
             {"pp_name": "remove_self_loops"},
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
+            {"pp_name": "plot", "msd": false, "fig_name": "test", "visualize_alone": true, "save_path": ""},
             {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
                 [
                     "ws",
                     "training",
+                    "ws"
+                ],
+                [
+                    "ws",
+                    "ws_same_wall",
+                    "ws"
+                ],
+                [
+                    "ws",
+                    "ws_same_room",
                     "ws"
                 ],
                 [

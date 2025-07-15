@@ -9,7 +9,8 @@ import json, os, time, sys
 from graph_datasets.config import get_config as get_datasets_config
 from graph_reasoning.config import get_config as get_reasoning_config
 synteticdataset_settings = get_datasets_config("ifh")
-synteticdataset_settings["source"]["base_graphs"]["n_buildings"] = 10
+synteticdataset_settings["source"]["base_graphs"]["n_buildings"] = 20
+
 
 dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
 dataset_generator.create_dataset()
@@ -34,6 +35,6 @@ all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_n
     # visualize_nxgraph_3d(graph, "train data", visualize_alone=True)
     # plt.show()
 
-save_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/test/ssg.pickle"
+save_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/test/ssg_manhattan_small_20.pkl"
 # dataset_generator.save_wrappers_to_pickle(extended_nxdatset['train'], save_path)
 dataset_generator.save_networkx_graphs_to_pickle(extended_nxdatset['train'], save_path)
