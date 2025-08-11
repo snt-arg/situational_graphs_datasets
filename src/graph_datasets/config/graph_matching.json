@@ -2,9 +2,9 @@
     "source" : {
         "type": "synthetic",
         "base_graphs": {
-            "grid_dims" : [[30,30],[30,30]],
+            "grid_dims" : [[10,10],[10,10]],
             "playground_size": [100, 100],
-            "max_room_entry_size" : [20,20],
+            "max_room_entry_size" : [10,10],
             "min_room_entry_size" : [10,10],
             "room_center_distances" : [0.1,0.1],
             "wall_thickness" : [0.16,0.2],
@@ -37,11 +37,15 @@
     },
     "postprocess": {
         "training": [
-            {"pp_name": "filter", "nodes": ["ws", "room"], "edges":[
+            {"pp_name": "filter", "nodes": ["ws", "room","wall"], "edges":[
                 [
                     "ws",
                     "ws_belongs_room",
                     "room"
+                ],[
+                    "ws",
+                    "ws_belongs_wall",
+                    "wall"
                 ]
             ]}
         ],

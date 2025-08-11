@@ -2,9 +2,9 @@
     "source" : {
         "type": "synthetic",
         "base_graphs": {
-            "grid_dims" : [[50,100],[50,100]],
+            "grid_dims" : [[90,200],[90,200]],
             "playground_size": [100, 100],
-            "max_room_entry_size" : [100,100],
+            "max_room_entry_size" : [75,75],
             "min_room_entry_size" : [10,10],
             "room_center_distances" : [0.1,0.1],
             "wall_thickness" : [0.16,0.2],
@@ -37,6 +37,7 @@
     },
     "postprocess": {
         "training": [
+            {"pp_name": "merge_room", "ratio": 0.7},
             {"pp_name": "unfreeze"},
             {"pp_name": "remove_self_loops"},
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
@@ -67,6 +68,7 @@
                     "floor"
                 ]
             ]},
+            {"pp_name": "dropout", "room": 0.2, "ws":0.0},
             {"pp_name": "add_floor_node"},
             {"pp_name": "merge_edge_types", "common_type":"common"},
             {"pp_name": "to_undirected"}

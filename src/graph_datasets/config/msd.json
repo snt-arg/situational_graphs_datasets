@@ -1,7 +1,7 @@
 {   
     "source": {
         "type": "msd",
-        "pickle_path": "/home/adminpc/workspaces/reasoning_ws/src/msd/data/msd_from_notebook.pickle"
+        "pickle_path": "/home/adminpc/workspaces/reasoning_ws/src/msd/data/msd_from_notebook_all.pickle"
     },
     "noise":{
         "global":{
@@ -29,6 +29,39 @@
     },
     "postprocess": {
         "training": [
+            {"pp_name": "unfreeze"},
+            {"pp_name": "remove_self_loops"},
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
+            {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
+                [
+                    "ws",
+                    "training",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_same_wall",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_same_room",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_belongs_room",
+                    "room"
+                ],[
+                    "ws",
+                    "ws_belongs_wall",
+                    "wall"
+                ],[
+                    "room",
+                    "room_belongs_floor",
+                    "floor"
+                ]
+            ]},
+            {"pp_name": "add_floor_node"},
+            {"pp_name": "merge_edge_types", "common_type":"common"},
+            {"pp_name": "to_undirected"}
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},

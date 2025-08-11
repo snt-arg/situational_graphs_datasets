@@ -63,6 +63,10 @@
                     "ws_belongs_room",
                     "room"
                 ],[
+                    "object",
+                    "object_belongs_room",
+                    "room"
+                ],[
                     "ws",
                     "ws_belongs_wall",
                     "wall"
@@ -84,8 +88,7 @@
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
-            {"pp_name": "remove_self_loops"}
-            
+            {"pp_name": "remove_self_loops"} 
         ]
     },
     "initial_features": {

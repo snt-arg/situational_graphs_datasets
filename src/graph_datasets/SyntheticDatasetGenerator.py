@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from torch_geometric.data import Data
 import torch
 from shapely.geometry import Polygon, Point
+from collections import defaultdict, Counter
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -161,7 +162,7 @@ class SyntheticDatasetGenerator():
                      np.random.randint(self.settings["source"]["base_graphs"]["grid_dims"][1][0], self.settings["source"]["base_graphs"]["grid_dims"][1][1] + 1)]
         max_room_entry_size = np.random.randint(self.settings["source"]["base_graphs"]["max_room_entry_size"][0], self.settings["source"]["base_graphs"]["max_room_entry_size"][1] + 1)
         min_room_entry_size = np.random.randint(self.settings["source"]["base_graphs"]["min_room_entry_size"][0], self.settings["source"]["base_graphs"]["min_room_entry_size"][1] + 1)
-
+        
         ### Base matrix
         base_matrix = np.zeros(grid_dims)
         room_n = 1
@@ -179,8 +180,8 @@ class SyntheticDatasetGenerator():
                     else:
                         remaining_y = len(base_matrix[i,j:])
                     remaining = [remaining_x, remaining_y]
-                    room_entry_size = [min(remaining[0], np.random.randint(low=min_room_entry_size+1, high=max_room_entry_size+1, size=(1))[0]),\
-                                       min(remaining[1], np.random.randint(low=min_room_entry_size+1, high=max_room_entry_size+1, size=(1))[0])]
+                    room_entry_size = [min(remaining[0], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0]),\
+                                       min(remaining[1], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0])]
 
                     if (room_entry_size[0] >= min_room_entry_size) & (room_entry_size[1] >= min_room_entry_size):
                         room_id = room_n
@@ -1275,10 +1276,11 @@ class SyntheticDatasetGenerator():
     def dataset_from_msd(self, path):
         with open(path, 'rb') as f:
             raw_msd_graphs = pickle.load(f)
+            print(f"Loaded {len(raw_msd_graphs)} graphs from {path}")
             f.close()
 
         graphs = []
-        for msd_graph in raw_msd_graphs:
+        for msd_graph in tqdm.tqdm(raw_msd_graphs[:100], desc="Processing MSD graphs", colour="red"):
 
             graphs.append(self.graph_from_msd(GraphWrapper(graph_obj = copy.deepcopy(msd_graph))))
 
@@ -1305,19 +1307,23 @@ class SyntheticDatasetGenerator():
         edges_to_add = []
         current_node_id = 0
         node_id_mapping = {}
+        graph.graph.graph.clear()
+
         for node_id, node_attrs in nodes_attrs:
             node_id_mapping[node_id] = copy.deepcopy(current_node_id)
             current_node_id += 1
+            node_attrs["viz"] = {}
             if node_attrs["type"] in ["room", "wall","floor","building"]:
-                node_attrs["center"] = np.array(node_attrs["center"])
-                node_attrs["viz"]["center"] = node_attrs["center"]
+                node_attrs["center"] = np.array([node_attrs["center"][0], node_attrs["center"][1], 0.])
+                node_attrs["viz"]["center"] = copy.deepcopy(node_attrs["center"])
+                node_attrs["viz"]["center"][2] = self.viz_center_offsets[node_attrs["type"]][2]
                 node_attrs["viz"]["type"] = "Point"
                 node_attrs["viz"]["feat"] = node_viz_feat_mapping[node_attrs["type"]]
                 node_attrs["linewidth"] = 1.0
                 node_attrs["alpha"] = 0.5
 
             elif node_attrs["type"] in ["ws"]:
-                node_attrs["center"] = np.array(node_attrs["center"])
+                node_attrs["center"] = np.array([node_attrs["center"][0], node_attrs["center"][1], 0.])
                 node_attrs["normal"] = np.array(node_attrs["normal"])
                 node_attrs["length"] = node_attrs["width"]
                 rotation = R.from_euler('z', -90, degrees=True)
@@ -1326,7 +1332,11 @@ class SyntheticDatasetGenerator():
                 limits = [node_attrs["center"] + ws_direction*node_attrs["length"]/2,
                           node_attrs["center"] - ws_direction*node_attrs["length"]/2]
                 node_attrs["limits"] = limits
-                node_attrs["viz"]["limits"] = limits
+                limits[0][2] = self.viz_center_offsets[node_attrs["type"]][2]
+                limits[1][2] = self.viz_center_offsets[node_attrs["type"]][2]
+                node_attrs["viz"]["limits"] = copy.deepcopy(limits)
+                node_attrs["viz"]["center"] = copy.deepcopy(node_attrs["center"])
+                node_attrs["viz"]["center"][2] = self.viz_center_offsets[node_attrs["type"]][2]
                 node_attrs["viz"]["type"] = "Line"
                 node_attrs["viz"]["feat"] = node_viz_feat_mapping[node_attrs["type"]]
                 node_attrs["viz"]["linewidth"] = 2.0
@@ -1349,10 +1359,14 @@ class SyntheticDatasetGenerator():
                 
                 # print(f"dbg room_id {room_id} WALL_id {WALL_id} closest_WS {closest_WS}")
                 nodes_to_remove.append(node_id)
-                edges_to_add.append((WALL_id, closest_WS, {}))
-                
+                edges_to_add.append((WALL_id, closest_WS, {"type": "ws_belongs_wall", "linewidth":1.0, "alpha":0.5}))
+
             else:
                 nodes_to_remove.append(node_id)
+
+        for src_id, trg_id, edge_attrs in edges_attrs:
+            edge_attrs["linewidth"] = 0.5
+            edge_attrs["alpha"] = 0.5
 
         graph.remove_nodes(nodes_to_remove)
         graph.add_edges(edges_to_add)
@@ -1482,6 +1496,47 @@ class SyntheticDatasetGenerator():
                 print(f"Graph {i}")
                 data.print_attributes()
                 print("\n")
+
+    def compute_stats(self, graphs):
+        node_counts = []
+        edge_counts = []
+        node_type_totals = defaultdict(list)
+        degree_counts = []
+
+        for G in graphs:
+            node_counts.append(len(G.nodes))
+            edge_counts.append(len(G.edges))
+
+            # Count node types
+            type_counter = Counter()
+            for _, data in G.nodes(data=True):
+                node_type = data.get("type", "unknown")
+                type_counter[node_type] += 1
+            for t, count in type_counter.items():
+                node_type_totals[t].append(count)
+
+            # Degree distribution
+            degrees = [d for _, d in G.degree()]
+            degree_counts.extend(degrees)
+
+        avg_nodes = np.mean(node_counts)
+        max_nodes = np.max(node_counts)
+
+        avg_edges = np.mean(edge_counts)
+        max_edges = np.max(edge_counts)
+
+        avg_node_types = {k: np.mean(v) for k, v in node_type_totals.items()}
+        max_node_types = {k: np.max(v) for k, v in node_type_totals.items()}
+
+        return {
+            "avg_nodes": avg_nodes,
+            "max_nodes": max_nodes,
+            "avg_edges": avg_edges,
+            "max_edges": max_edges,
+            "avg_node_types": avg_node_types,
+            "max_node_types": max_node_types,
+            "degree_distribution": degree_counts,
+        }
 
 
     # def merge_graphs_type_as_x(self, nxdatset):
