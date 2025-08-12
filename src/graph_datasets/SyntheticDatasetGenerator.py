@@ -526,6 +526,69 @@ class SyntheticDatasetGenerator():
         filtered_graph.to_directed()
         return filtered_graph
     
+    def update_node_attrs_by_hierarchy(self, node_id, working_graph):
+        hierchy_types = ["ws", "room", "floor", "building"]
+        node_type = working_graph.get_attributes_of_node(node_id)["type"]
+        node_attrs = working_graph.get_attributes_of_node(node_id)
+        below_type = hierchy_types[hierchy_types.index(node_type) - 1]
+
+        if node_type in ["room", "floor", "building"]:
+            below_nodes = working_graph.get_neighbourhood_graph(node_id).filter_graph_by_node_types([below_type]).get_nodes_ids()
+            centers = [working_graph.get_attributes_of_node(below_node)["center"] for below_node in below_nodes]
+            mean_center = sum(centers) / len(centers) if centers else 0
+            node_attrs["center"][0], node_attrs["center"][1] = mean_center[0], mean_center[1]
+            node_attrs["viz"]["center"][0], node_attrs["viz"]["center"][1] = mean_center[0], mean_center[1]
+
+        return working_graph
+
+    def dropout_by_hierarchy(self, node_id, working_graph, update_higher_nodes):
+        node_type = working_graph.get_attributes_of_node(node_id)["type"]
+
+        ### Remove nodes
+        node_ids_selected = [node_id]
+        if node_type == "room":
+            ws_node_ids = list(working_graph.get_neighbourhood_graph(node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
+            node_ids_selected = node_ids_selected + ws_node_ids
+            for ws_node_id in ws_node_ids:
+                wall_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types(["wall"]).get_nodes_ids())
+                for wall_ws_node_id in wall_ws_node_ids:
+                    if len(list(working_graph.get_neighbourhood_graph(wall_ws_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())) < 3:
+                        node_ids_selected.append(wall_ws_node_id)
+                
+        if node_type == "ws": ### TODO FIX
+            node_ids_selected.append(node_id)
+
+        aux_graph = copy.deepcopy(working_graph)
+        working_graph.remove_nodes(node_ids_selected)
+
+        ### Update higher nodes
+        hierchy_types = ["ws", "room", "floor", "building"]
+        updating_node_id = copy.deepcopy(node_id)
+        if update_higher_nodes:
+            updatable_hierarchy_types = hierchy_types[(hierchy_types.index(node_type)+1):]
+            for updatable_hierarchy_type in updatable_hierarchy_types:
+                updating_node_id = list(aux_graph.get_neighbourhood_graph(updating_node_id).filter_graph_by_node_types([updatable_hierarchy_type]).get_nodes_ids())[0]
+                if updating_node_id:
+                    working_graph = self.update_node_attrs_by_hierarchy(updating_node_id, working_graph)
+        
+        return working_graph
+
+    def include_observations(self, working_graph, pp_settings):
+        graph_sequence = [copy.deepcopy(working_graph)]
+        if "room" in pp_settings["elements"].keys():
+            remaining_rooms_ids = list(working_graph.filter_graph_by_node_types("room").get_nodes_ids())
+            n_rooms_to_remove = random.randint(pp_settings["elements"]["room"][0], pp_settings["elements"]["room"][1])
+            
+            while len(remaining_rooms_ids) > n_rooms_to_remove:
+                rooms_to_remove = random.sample(remaining_rooms_ids, n_rooms_to_remove)
+                for room_id in rooms_to_remove:
+                    working_graph = self.dropout_by_hierarchy(room_id, working_graph, update_higher_nodes=True)
+                graph_sequence.append(copy.deepcopy(working_graph))
+
+                remaining_rooms_ids = list(working_graph.filter_graph_by_node_types("room").get_nodes_ids())
+                n_rooms_to_remove = random.randint(pp_settings["elements"]["room"][0], pp_settings["elements"]["room"][1])
+
+        return graph_sequence
 
     def extend_nxdataset(self, nxdataset, new_edge_type, stage):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
@@ -588,35 +651,40 @@ class SyntheticDatasetGenerator():
                 ### room dropout
                 if pp_settings["room"] > 0.:
                     room_node_ids = copy.deepcopy(list(working_graph.filter_graph_by_node_types(["room"]).get_nodes_ids()))
-                    node_ids_selected = []
+                    # node_ids_selected = []
                     for room_node_id in room_node_ids:
                         left_rooms = list(working_graph.filter_graph_by_node_types(["room"]).get_nodes_ids())
                         if len(left_rooms) > 1 and np.random.random_sample() < pp_settings["room"]:
-                            node_ids_selected.append(room_node_id)
-                            # asdf
-                            ws_node_ids = list(working_graph.get_neighbourhood_graph(room_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
-                            node_ids_selected = node_ids_selected + ws_node_ids
-                            for ws_node_id in ws_node_ids:
-                                wall_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types(["wall"]).get_nodes_ids())
-                                for wall_ws_node_id in wall_ws_node_ids:
-                                    if len(list(working_graph.get_neighbourhood_graph(wall_ws_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())) < 3:
-                                        node_ids_selected.append(wall_ws_node_id)
-                        working_graph.remove_nodes(node_ids_selected)
+                            working_graph = self.dropout_by_hierarchy(room_node_id, working_graph, update_higher_nodes=True)
+                        #     node_ids_selected.append(room_node_id)
+                            
+                        #     ws_node_ids = list(working_graph.get_neighbourhood_graph(room_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
+                        #     node_ids_selected = node_ids_selected + ws_node_ids
+                        #     for ws_node_id in ws_node_ids:
+                        #         wall_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types(["wall"]).get_nodes_ids())
+                        #         for wall_ws_node_id in wall_ws_node_ids:
+                        #             if len(list(working_graph.get_neighbourhood_graph(wall_ws_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())) < 3:
+                        #                 node_ids_selected.append(wall_ws_node_id)
+                        # working_graph.remove_nodes(node_ids_selected)
 
-                ### ws dropout
+                ### ws dropout  TODO FIX
                 if pp_settings["ws"] > 0.:
                     ws_node_ids = list(working_graph.filter_graph_by_node_types(["ws"]).get_nodes_ids())
-                    node_ids_selected = []
+                    # node_ids_selected = []
                     for ws_node_id in ws_node_ids:
                         # visualize_nxgraph(working_graph.get_neighbourhood_graph(ws_node_id), "test", visualize_alone=True)
                         # for e in working_graph.get_neighbourhood_graph(ws_node_id).get_attributes_of_all_edges():
                         #     print(f"dbg e[2][type] {e[2]['type']}")
                         # visualize_nxgraph(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types(["ws_same_room"]).filterout_unparented_nodes(), "test 2", visualize_alone=True)
-                        same_room_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_edge_types(["ws_same_room"]).filterout_unparented_nodes().get_nodes_ids())
-                        left_in_same_room_ws_node_ids = list(set(same_room_ws_node_ids) - set(node_ids_selected))
-                        if len(left_in_same_room_ws_node_ids) > 1 and np.random.random_sample() < pp_settings["ws"]:
-                            node_ids_selected.append(ws_node_id)
-                    working_graph.remove_nodes(node_ids_selected)
+                        room_id = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types(["room"]).get_nodes_ids())[0]
+                        same_room_ws_node_ids = room_id = list(working_graph.get_neighbourhood_graph(room_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
+                        # same_room_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types(["ws"]).filterout_unparented_nodes().get_nodes_ids())
+                        print(f"dbg same_room_ws_node_ids {same_room_ws_node_ids}")
+                        # left_in_same_room_ws_node_ids = list(set(same_room_ws_node_ids) - set(node_ids_selected))
+                        if len(same_room_ws_node_ids) > 2 and np.random.random_sample() < pp_settings["ws"]:
+                            # node_ids_selected.append(ws_node_id)
+                            working_graph = self.dropout_by_hierarchy(ws_node_id, working_graph, update_higher_nodes=True)
+                    # working_graph.remove_nodes(node_ids_selected)
 
             ### Include K nearest neighbouors edges
             elif pp_settings["pp_name"] == "K_near_neigh":
@@ -923,6 +991,8 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "to_undirected":
                 working_graph.to_undirected()
 
+            elif pp_settings["pp_name"] == "incremental_observations":
+                working_graph = self.include_observations(working_graph, pp_settings)
 
             return working_graph
 
@@ -936,8 +1006,10 @@ class SyntheticDatasetGenerator():
                 # part_2_end = time.time()
                 # print(f"dbg elapsed time in pp {pp_settings['pp_name']}: {part_2_end - part_1_end}")
             
-            if len(base_graph.get_nodes_ids()) > 0 and len(base_graph.get_edges_ids()) > 0:
+            if type(base_graph) == GraphWrapper and len(base_graph.get_nodes_ids()) > 0 and len(base_graph.get_edges_ids()) > 0:
                 new_nxdataset.append(base_graph)
+            elif type(base_graph) == list and base_graph:
+                new_nxdataset.extend([base_graph])
 
         val_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["val"]-self.settings["training_split"]["test"]))
         test_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["test"]))

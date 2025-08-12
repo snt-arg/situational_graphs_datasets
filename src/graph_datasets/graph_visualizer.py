@@ -63,7 +63,7 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids
         plt.close(fig)
     return fig
 
-def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None):
+def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None, blocking=False):
     nodes_data = graph.get_attributes_of_all_nodes()
     fig = plt.figure(image_name)
     ax = fig.add_subplot(111, projection='3d')
@@ -127,7 +127,7 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
     # Add legend
     ax.legend()
     if visualize_alone:
-        plt.show()
+        plt.show(block=blocking)
     else:
         plt.close(fig)
     return fig
