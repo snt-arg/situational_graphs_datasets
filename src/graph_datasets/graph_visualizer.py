@@ -3,6 +3,7 @@ import numpy as np
 import networkx as nx
 import torch
 from matplotlib.patches import ConnectionPatch
+from mpl_toolkits.mplot3d import proj3d  # Add this import at the top of your file
 
 
 
@@ -65,6 +66,7 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids
 
 def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None, blocking=False):
     nodes_data = graph.get_attributes_of_all_nodes()
+    node_attr_dict = {nd[0]: nd[1] for nd in nodes_data}
     fig = plt.figure(image_name)
     ax = fig.add_subplot(111, projection='3d')
 
@@ -74,20 +76,27 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
             arr = np.append(arr, 0)
         return arr
 
-    # For legend
+    node_positions = {}
+    node_artists = []
+    plane_artists = []  # (node_id, normal_artist, center, normal, main_line_artist)
+    edge_artists = []
+    edges_data = graph.get_attributes_of_all_edges()
+
     legend_handles = {}
     for node_data in nodes_data:
+        node_id = node_data[0]
         if node_data[1]["viz"]["type"] == "Point":
             markersize = node_data[1].get("markersize", 1.0)
             viz_data = to_3d(node_data[1]["viz"]["center"])
             color = _mpl_color_from_feat(node_data[1]["viz"]["feat"])
             marker = node_data[1]["viz"]["feat"][1] if len(node_data[1]["viz"]["feat"]) > 1 else 'o'
             label = node_data[1].get("type", "Point")
-            # Only add one handle per label
             if label not in legend_handles:
                 h = ax.scatter([], [], [], marker=marker, s=markersize*30, color=color, label=label)
                 legend_handles[label] = h
-            ax.scatter(viz_data[0], viz_data[1], viz_data[2], marker=marker, s=markersize*30, color=color)
+            artist = ax.scatter(viz_data[0], viz_data[1], viz_data[2], marker=marker, s=markersize*30, color=color, picker=True)
+            node_artists.append((node_id, artist))
+            node_positions[node_id] = viz_data
             tag_center = viz_data
         elif node_data[1]["viz"]["type"] == "Line":
             viz_data = np.array(node_data[1]["viz"]["limits"])
@@ -96,36 +105,132 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
             label = node_data[1]["viz"].get("type", "Line")
             if viz_data.shape[1] == 2:
                 viz_data = np.hstack([viz_data, np.zeros((viz_data.shape[0], 1))])
-            # Only add one handle per label
             if label not in legend_handles:
                 h, = ax.plot([], [], [], color=color, linewidth=linewidth, label=label)
                 legend_handles[label] = h
-            ax.plot(viz_data[:,0], viz_data[:,1], viz_data[:,2], color=color, linewidth=linewidth)
+            # Main line
+            main_line_artist, = ax.plot(viz_data[:,0], viz_data[:,1], viz_data[:,2], color=color, linewidth=linewidth)
+            # Blue normal line (plane node)
             center = to_3d(node_data[1]["center"])
             normal = to_3d(node_data[1].get("normal", [0, 0, 0]))
             norm_line = np.stack([center, center + normal/4])
-            ax.plot(norm_line[:,0], norm_line[:,1], norm_line[:,2], color='b', linewidth=linewidth)
+            normal_artist, = ax.plot(norm_line[:,0], norm_line[:,1], norm_line[:,2], color='b', linewidth=linewidth)
+            plane_artists.append((node_id, normal_artist, center, normal, main_line_artist))  # Track plane node
             tag_center = center + normal * 0.5 if np.linalg.norm(normal) > 0 else center
         if include_node_ids:
             ax.text(tag_center[0], tag_center[1], tag_center[2], str(node_data[0]), fontsize=10, color='black')
-    edges_data = graph.get_attributes_of_all_edges()
+
+
+    # Draw edges and store artists
     for edge_data in edges_data:
         points = np.array([to_3d(nodes_data[edge_data[0]]["viz"]["center"]), to_3d(nodes_data[edge_data[1]]["viz"]["center"])])
         color = _mpl_color_from_feat(edge_data[2].get("viz_feat", "k"))
         linewidth = edge_data[2].get("linewidth", 1.5)
         alpha = edge_data[2].get("alpha", 1.0)
         label = edge_data[2].get("type", "Edge")
-        # Only add one handle per label
         if label not in legend_handles:
             h, = ax.plot([], [], [], color=color, linewidth=linewidth, alpha=alpha, label=label)
             legend_handles[label] = h
-        ax.plot(points[:,0], points[:,1], points[:,2], color=color, linewidth=linewidth, alpha=alpha)
+        artist, = ax.plot(points[:,0], points[:,1], points[:,2], color=color, linewidth=linewidth, alpha=alpha)
+        edge_artists.append((edge_data, artist))
         if "pred" in edge_data[2]:
             center = (points[0] + points[1]) / 2
             ax.text(center[0], center[1], center[2], "{:.2f}".format(edge_data[2]['pred']), fontsize=9)
     ax.set_box_aspect([1,1,1])
-    # Add legend
     ax.legend()
+
+    # --- Interactivity: highlight node, plane node, and edges on hover ---
+    def on_motion(event):
+        if event.inaxes != ax:
+            return
+        min_dist = float('inf')
+        closest_node = None
+        closest_plane = None
+
+        # Check point nodes
+        for node_id, pos in node_positions.items():
+            x2, y2, _ = proj3d.proj_transform(pos[0], pos[1], pos[2], ax.get_proj())
+            dist = np.hypot(event.x - ax.transData.transform((x2, y2))[0], event.y - ax.transData.transform((x2, y2))[1])
+            if dist < min_dist and dist < 30:
+                min_dist = dist
+                closest_node = node_id
+                closest_plane = None
+
+        # Check plane nodes (blue lines)
+        for node_id, normal_artist, center, normal, main_line_artist in plane_artists:
+            plane_mid = center + normal * 0.5
+            x2, y2, _ = proj3d.proj_transform(plane_mid[0], plane_mid[1], plane_mid[2], ax.get_proj())
+            dist = np.hypot(event.x - ax.transData.transform((x2, y2))[0], event.y - ax.transData.transform((x2, y2))[1])
+            if dist < min_dist and dist < 30:
+                min_dist = dist
+                closest_plane = node_id
+                closest_node = None
+
+        # Reset all nodes/edges/planes
+        for nid, artist in node_artists:
+            artist.set_facecolor(_mpl_color_from_feat(node_attr_dict[nid]["viz"]["feat"]))
+            artist.set_sizes([node_attr_dict[nid].get("markersize", 1.0)*30])
+        for edge_data, artist in edge_artists:
+            artist.set_color(_mpl_color_from_feat(edge_data[2].get("viz_feat", "k")))
+            artist.set_linewidth(edge_data[2].get("linewidth", 1.5))
+        for nid, normal_artist, center, normal, main_line_artist in plane_artists:
+            normal_artist.set_color('b')
+            normal_artist.set_linewidth(node_attr_dict[nid]["viz"].get("linewidth", 1.5))
+            main_line_artist.set_color(_mpl_color_from_feat(node_attr_dict[nid]["viz"]["feat"]))
+            main_line_artist.set_linewidth(node_attr_dict[nid]["viz"].get("linewidth", 1.5))
+
+        # Highlight if found
+        connected_nodes = set()
+        if closest_node is not None:
+            for nid, artist in node_artists:
+                if nid == closest_node:
+                    artist.set_facecolor('yellow')
+                    artist.set_sizes([80])
+            for edge_data, artist in edge_artists:
+                if edge_data[0] == closest_node or edge_data[1] == closest_node:
+                    artist.set_color('orange')
+                    artist.set_linewidth(3)
+                    connected_nodes.add(edge_data[0])
+                    connected_nodes.add(edge_data[1])
+            for nid, artist in node_artists:
+                if nid in connected_nodes and nid != closest_node:
+                    artist.set_facecolor('orange')
+                    artist.set_sizes([60])
+            # Highlight plane node neighbors
+            for nid, normal_artist, center, normal, main_line_artist in plane_artists:
+                if nid in connected_nodes and nid != closest_node:
+                    normal_artist.set_color('orange')
+                    normal_artist.set_linewidth(4)
+                    main_line_artist.set_color('orange')
+                    main_line_artist.set_linewidth(4)
+        elif closest_plane is not None:
+            for nid, normal_artist, center, normal, main_line_artist in plane_artists:
+                if nid == closest_plane:
+                    normal_artist.set_color('orange')
+                    normal_artist.set_linewidth(4)
+                    main_line_artist.set_color('orange')
+                    main_line_artist.set_linewidth(4)
+            for edge_data, artist in edge_artists:
+                if edge_data[0] == closest_plane or edge_data[1] == closest_plane:
+                    artist.set_color('orange')
+                    artist.set_linewidth(3)
+                    connected_nodes.add(edge_data[0])
+                    connected_nodes.add(edge_data[1])
+            for nid, artist in node_artists:
+                if nid in connected_nodes:
+                    artist.set_facecolor('orange')
+                    artist.set_sizes([60])
+            # Highlight plane node neighbors
+            for nid, normal_artist, center, normal, main_line_artist in plane_artists:
+                if nid in connected_nodes and nid != closest_plane:
+                    normal_artist.set_color('orange')
+                    normal_artist.set_linewidth(4)
+                    main_line_artist.set_color('orange')
+                    main_line_artist.set_linewidth(4)
+        fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect('motion_notify_event', on_motion)
+
     if visualize_alone:
         plt.show(block=blocking)
     else:
