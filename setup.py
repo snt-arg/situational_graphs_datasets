@@ -22,6 +22,4 @@ setup(
     zip_safe=True,
     maintainer='TODO',
     maintainer_email='josmilrom@gmail.com',
-    license='TODO: License declaration',
-    tests_require=['pytest']
-)
+    license='TODO: License declaration')
