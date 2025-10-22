@@ -137,6 +137,72 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
             center = (points[0] + points[1]) / 2
             ax.text(center[0], center[1], center[2], "{:.2f}".format(edge_data[2]['pred']), fontsize=9)
     ax.set_box_aspect([1,1,1])
+
+    # Calculate the bounds including all elements
+    x_coords = []
+    y_coords = []
+    z_coords = []
+
+    # Collect coordinates from all visual elements
+    for node_data in nodes_data:
+        if node_data[1]["viz"]["type"] == "Point":
+            pos = to_3d(node_data[1]["viz"]["center"])
+            x_coords.append(pos[0])
+            y_coords.append(pos[1])
+            z_coords.append(pos[2])
+        elif node_data[1]["viz"]["type"] == "Line":
+            # Get line endpoints
+            line_data = np.array(node_data[1]["viz"]["limits"])
+            if line_data.shape[1] == 2:
+                line_data = np.hstack([line_data, np.zeros((line_data.shape[0], 1))])
+            x_coords.extend(line_data[:, 0])
+            y_coords.extend(line_data[:, 1])
+            z_coords.extend(line_data[:, 2])
+            # Get center and normal
+            center = to_3d(node_data[1]["center"])
+            normal = to_3d(node_data[1].get("normal", [0, 0, 0]))
+            endpoint = center + normal/4
+            x_coords.extend([center[0], endpoint[0]])
+            y_coords.extend([center[1], endpoint[1]])
+            z_coords.extend([center[2], endpoint[2]])
+
+    # Include edge endpoints and labels
+    for edge_data in edges_data:
+        source = to_3d(nodes_data[edge_data[0]]["viz"]["center"])
+        target = to_3d(nodes_data[edge_data[1]]["viz"]["center"])
+        x_coords.extend([source[0], target[0]])
+        y_coords.extend([source[1], target[1]])
+        z_coords.extend([source[2], target[2]])
+        if "pred" in edge_data[2]:
+            # Include label position
+            mid = (source + target) / 2
+            x_coords.append(mid[0])
+            y_coords.append(mid[1])
+            z_coords.append(mid[2])
+
+    if x_coords:  # Only proceed if we have coordinates
+        # Calculate the ranges and add padding for each dimension
+        def get_padded_range(coords):
+            if not coords:
+                return -1, 1  # Default range if no coordinates
+            min_val = np.min(coords)
+            max_val = np.max(coords)
+            span = max_val - min_val
+            if span == 0:  # Handle single point case
+                span = 1.0
+            padding = span * 0.2  # Exactly 20% padding of the dimension's span
+            return min_val - padding, max_val + padding
+
+        # Get padded ranges for each dimension
+        x_min, x_max = get_padded_range(x_coords)
+        y_min, y_max = get_padded_range(y_coords)
+        z_min, z_max = get_padded_range(z_coords)
+        
+        # Set the limits independently for each dimension
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_zlim(z_min, z_max)
+
     ax.legend()
 
     # --- Interactivity: highlight node, plane node, and edges on hover ---
