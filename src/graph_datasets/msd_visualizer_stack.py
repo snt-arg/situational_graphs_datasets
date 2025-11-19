@@ -11,7 +11,7 @@ from graph_datasets.config import get_config as get_datasets_config
 dataset = "synthetic"
 
 if dataset == "synthetic":
-    synteticdataset_settings = get_datasets_config("ifh_incremental")
+    synteticdataset_settings = get_datasets_config("ifh")
     synteticdataset_settings["source"]["base_graphs"]["n_buildings"] = 10
 
 

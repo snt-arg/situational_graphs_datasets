@@ -53,9 +53,8 @@ class SyntheticDatasetGenerator():
         self.dataset_name = dataset_name
         self.dataset_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), self.report_path, self.dataset_name)
         self.graphs = {"original":[],"noise":[],"views":[],"extended":[]}
-
-        self.viz_center_offsets = {"ws": np.array([0, 0, 0]), "room": np.array([0, 0, 2]), "wall": np.array([0, 0, 1]),\
-                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, -2]), "object": np.array([0, 0, 0.5])}
+        
+        self.define_viz_settings()
 
         if settings["source"]["type"] == "synthetic":
             self.max_n_rooms = 0
@@ -118,6 +117,20 @@ class SyntheticDatasetGenerator():
 
         self.norm_limits = {"node" : add_features("node", init_feat_keys["nodes"]["ws"], {"min": [], "max":[]}), \
                             "edge" : add_features("edge", init_feat_keys["edges"][tuple(["ws","ws"])], {"min": [], "max":[]})}
+        
+    def define_viz_settings(self):
+        self.node_viz_feat_mapping = {
+            'ws': "black",
+            'room': 'ro',
+            'wall': 'mo',
+            'floor': 'go',
+            'building': 'co',
+            'wall_ws': 'yo'
+        }
+
+        self.viz_center_offsets = {"ws": np.array([0, 0, 0]), "room": np.array([0, 0, 2]), "wall": np.array([0, 0, 1]),\
+                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, -2]), "object": np.array([0, 0, 0.5])}
+                
 
     def normalize_features(self, type, feats):
         if len(feats) != 0:
@@ -1363,14 +1376,6 @@ class SyntheticDatasetGenerator():
     def graph_from_msd(self, msd_graph):
 
         graph = copy.deepcopy(msd_graph)
-        node_viz_feat_mapping = {
-            'ws': "black",
-            'room': 'ro',
-            'wall': 'mo',
-            'floor': 'go',
-            'building': 'co',
-            'wall_ws': 'yo'
-        }
 
         nodes_attrs = graph.get_attributes_of_all_nodes()
         edges_attrs = graph.get_attributes_of_all_edges()
@@ -1390,7 +1395,7 @@ class SyntheticDatasetGenerator():
                 node_attrs["viz"]["center"] = copy.deepcopy(node_attrs["center"])
                 node_attrs["viz"]["center"][2] = self.viz_center_offsets[node_attrs["type"]][2]
                 node_attrs["viz"]["type"] = "Point"
-                node_attrs["viz"]["feat"] = node_viz_feat_mapping[node_attrs["type"]]
+                node_attrs["viz"]["feat"] = self.node_viz_feat_mapping[node_attrs["type"]]
                 node_attrs["linewidth"] = 1.0
                 node_attrs["alpha"] = 0.5
 
@@ -1410,7 +1415,7 @@ class SyntheticDatasetGenerator():
                 node_attrs["viz"]["center"] = copy.deepcopy(node_attrs["center"])
                 node_attrs["viz"]["center"][2] = self.viz_center_offsets[node_attrs["type"]][2]
                 node_attrs["viz"]["type"] = "Line"
-                node_attrs["viz"]["feat"] = node_viz_feat_mapping[node_attrs["type"]]
+                node_attrs["viz"]["feat"] = self.node_viz_feat_mapping[node_attrs["type"]]
                 node_attrs["viz"]["linewidth"] = 2.0
                 node_attrs["viz"]["alpha"] = 1.0
 
@@ -1455,6 +1460,13 @@ class SyntheticDatasetGenerator():
         graph.remove_nodes(nodes_to_remove)
 
         return graph
+    
+    def add_complete_viz_attributes(self):
+                
+        for key in self.graphs.keys():
+            for i in range(len(self.graphs[key])):
+                self.graphs[key][i].add_complete_viz_attributes_to_graph(self.graphs[key][i], self.viz_center_offsets, self.node_viz_feat_mapping)
+
 
 
     def deserialize_and_transform_to_GWraph(self):
