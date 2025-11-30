@@ -59,7 +59,7 @@
                     "floor"
                 ]
             ]},
-            {"pp_name": "add_floor_node"},
+            {"pp_name": "add_stories", "add_floor_nodes": true,"n_stories": 4},
             {"pp_name": "merge_edge_types", "common_type":"common"},
             {"pp_name": "to_undirected"}
         ],
