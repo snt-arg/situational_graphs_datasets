@@ -62,6 +62,7 @@ class SyntheticDatasetGenerator():
 
         elif settings["source"]["type"] == "msd":
             self.dataset_from_msd(settings["source"]["pickle_path"])
+            
 
     def correct_json_initfeat_keys(self, settings):
         new_settings = copy.deepcopy(settings)
@@ -506,7 +507,7 @@ class SyntheticDatasetGenerator():
         for edge_attributes in edges_attributes:
             source_node_id, target_node_id, edge_attrs = edge_attributes
             if edge_attrs["type"] != common_edge_type:
-                new_graph.update_edge_attrs((source_node_id, target_node_id), {"type": common_edge_type, "viz_feat" : "grey"})
+                new_graph.update_edge_attrs((source_node_id, target_node_id), {"type": common_edge_type, "viz_feat" : "grey", "label": 0})
 
         return new_graph
             
@@ -1007,6 +1008,9 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "incremental_observations":
                 working_graph = self.include_observations(working_graph, pp_settings)
 
+            elif pp_settings["pp_name"] == "update_viz":
+                working_graph._add_complete_viz_attributes_to_graph(self.viz_center_offsets, self.node_viz_feat_mapping)
+
             return working_graph
 
         for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
@@ -1460,6 +1464,7 @@ class SyntheticDatasetGenerator():
         graph.remove_nodes(nodes_to_remove)
 
         return graph
+    
     
     def add_complete_viz_attributes(self):
                 
