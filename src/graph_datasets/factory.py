@@ -9,14 +9,14 @@ from graph_wrapper.GraphWrapper import GraphWrapper
 from graph_datasets.config import get_config as get_datasets_config
 
 dataset_base = "synthetic"  # "synthetic" or "msd"
-config_name = "ifh"
-extension_name = "noise"
-pickle_name = "ssg_manh_noise_small.pkl"
-n_graphs_reduction = 3
+config_name = "ifh/ssg_manh_noise_small"
+extension_name = "original"  # "original" or "noise"
+pickle_name = "ifh/ssg_manh_noise_small_3000.pkl"
+n_graphs_reduction = 2
 save_pickle = False
-visualize = True
+visualize = False
 
-save_pickle_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/test/"
+save_pickle_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/"
 full_save_path = os.path.join(save_pickle_path, pickle_name)
 
 if dataset_base == "synthetic":
@@ -61,3 +61,11 @@ if visualize:
 
 if save_pickle:
     dataset_generator.save_networkx_graphs_to_pickle(all_dataset, full_save_path)
+
+
+
+
+for key in ["ws", "wall", "room", "floor"]:
+    graph = all_dataset[0].filter_graph_by_node_types([key])
+    center = list(graph.get_attributes_of_all_nodes())[0][1]['center']
+    print(f'key {key}, type of center attribute: {type(center)}, element type {type(center[0])}, size {len(center)}, value {center}')

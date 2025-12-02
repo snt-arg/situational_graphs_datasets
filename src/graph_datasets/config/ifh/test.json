@@ -37,7 +37,8 @@
     },
     "postprocess": {
         "training": [
-            {"pp_name": "merge_room", "ratio": 0.0},
+            {"pp_name": "merge_room", "ratio": 1.0},
+            {"pp_name": "update_viz"},
             {"pp_name": "unfreeze"},
             {"pp_name": "remove_self_loops"},
             {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
@@ -56,6 +57,9 @@
                 ]
             ]},
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
+            {"pp_name": "dropout", "room": 0.0, "ws":0.0},
+            {"pp_name": "add_floor_node"},
+            {"pp_name": "add_stories", "add_floor_nodes": true,"n_stories": 2},
             {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
                 [
                     "ws",
@@ -83,8 +87,6 @@
                     "floor"
                 ]
             ]},
-            {"pp_name": "dropout", "room": 0.0, "ws":0.0},
-            {"pp_name": "add_floor_node"},
             {"pp_name": "merge_edge_types", "common_type":"common"},
             {"pp_name": "to_undirected"}
         ],

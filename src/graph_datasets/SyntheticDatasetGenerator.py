@@ -389,7 +389,7 @@ class SyntheticDatasetGenerator():
 
 
         viz_building_center = copy.deepcopy(building_center)
-        viz_building_center[2] = 0  # Ensure z-coordinate is zero for visualization
+        # viz_building_center[2] = 0  # Ensure z-coordinate is zero for visualization
         viz_building_center += self.viz_center_offsets["building"]
         building_viz = copy.deepcopy(viz_data_base)
         building_viz.update({"type": "Point", "feat": "co","center": viz_building_center})
@@ -402,7 +402,7 @@ class SyntheticDatasetGenerator():
         return graph
     
     def add_stories(self, graph, n_floors = None, add_floor_nodes = False):
-        story_height = 5
+        story_height = 3
         initial_graph = copy.deepcopy(graph)
         working_graph = copy.deepcopy(graph)
         for n_floor in range(n_floors - 1):
