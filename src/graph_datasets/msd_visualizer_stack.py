@@ -9,10 +9,11 @@ from graph_wrapper.GraphWrapper import GraphWrapper
 from graph_datasets.config import get_config as get_datasets_config
 
 dataset = "synthetic"
+viz_lim = 3  # limit for visualizations (specifically for msd)
 
 if dataset == "synthetic":
-    synteticdataset_settings = get_datasets_config("ifh_incremental")
-    synteticdataset_settings["source"]["base_graphs"]["n_buildings"] = 10
+    synteticdataset_settings = get_datasets_config("ifh")
+    synteticdataset_settings["source"]["base_graphs"]["n_buildings"] = 3
 
 
     dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
@@ -26,7 +27,8 @@ elif dataset == "msd":
     synteticdataset_settings = get_datasets_config("msd")
     dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
     # dataset_generator.create_dataset()
-    extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["original"], "training", "training")
+    visualized_graphs = dataset_generator.graphs["original"][:viz_lim]  # limit to viz_lim visualizations, while keeping the graphs pool.
+    extended_nxdatset = dataset_generator.extend_nxdataset(visualized_graphs, "training", "training")
     # extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["original"], "training", "training")
 
     all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]

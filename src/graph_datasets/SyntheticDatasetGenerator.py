@@ -23,7 +23,8 @@ import sys
 import os
 import ast
 
-
+SAVE_DIR = Path("/home/sven/project/Dataset/Synthetic")
+SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
 import plot as pl
 
@@ -41,7 +42,6 @@ from graph_matching.utils import relative_positions, segments_distance, closest_
 # sys.path.append(graph_reasoning_dir)
 
 viz_data_base = {"type": "Point", "feat": 'ro', "data": np.array([]), "linewidth": 1, "alpha": 1.0, "size": 1}
-
 
 class SyntheticDatasetGenerator():
 
@@ -349,30 +349,47 @@ class SyntheticDatasetGenerator():
     
     def add_floor_node(self, graph):
         rooms_attrs = graph.filter_graph_by_node_attributes({"type" : "room"}).get_attributes_of_all_nodes()
-        room_ids = [attr[0] for attr in rooms_attrs]
+
+        # Maintain hierarchy. if no room exists, floor cannot exist
+        if not rooms_attrs:
+            if self.logger:
+                self.logger.info("Hierarchy Check: Skipping 'add_floor_nodes'. No node of type 'room' found to support node of type 'floor'")
+            return graph
+        
+        # calc center strictly from room
         room_centers = [attr[1]["center"] for attr in rooms_attrs]
-        floor_center = np.array(room_centers).sum(axis=0) / len(room_centers)
-        floor_node_id = max(graph.get_nodes_ids()) + 1
+        floor_center = np.mean(np.array(room_centers), axis=0)
+
+        floor_node_id = max(graph.get_nodes_ids(), default=-1) + 1
 
         viz_floor_center = floor_center + self.viz_center_offsets["floor"]
         floor_viz = copy.deepcopy(viz_data_base)
         floor_viz.update({"type": "Point", "feat": "go","center": viz_floor_center})
 
+        # add node at center   
         graph.add_nodes([(floor_node_id,{"type" : "floor", "x" : floor_center, "center" : floor_center, "viz" : floor_viz})])
+
+        # connect rooms to floor if rooms exist
+        room_ids = [attr[0] for attr in rooms_attrs]
         for room_id in room_ids:
             graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "g",\
                                                         "linewidth":1.0, "alpha":0.5})])
-            
-        return graph
-    
+        
+        return graph   
     
     def add_building_node(self, graph):
         floors_attrs = graph.filter_graph_by_node_attributes({"type" : "floor"}).get_attributes_of_all_nodes()
-        floor_ids = [attr[0] for attr in floors_attrs]
+
+        # Fallback: Handle no floor node existing
+        if not floors_attrs:
+            if self.logger:
+                self.logger.info("Hierarchy Check: Skipping 'add_building_nodes'. No node of type 'floor' found to support node of type 'building'")
+            return graph
+
         floor_centers = [attr[1]["center"] for attr in floors_attrs]
         building_center = np.array(floor_centers).sum(axis=0) / len(floor_centers)
-        floor_node_id = max(graph.get_nodes_ids()) + 1
 
+        floor_node_id = max(graph.get_nodes_ids()) + 1
 
         viz_building_center = copy.deepcopy(building_center)
         viz_building_center[2] = 0  # Ensure z-coordinate is zero for visualization
@@ -381,9 +398,13 @@ class SyntheticDatasetGenerator():
         building_viz.update({"type": "Point", "feat": "co","center": viz_building_center})
 
         graph.add_nodes([(floor_node_id,{"type" : "building", "x" : building_center, "center" : building_center, "viz" : building_viz})])
+
+        # Specifically connect Floor only to Building
+        floor_ids = [attr[0] for attr in floors_attrs]
         for floor_id in floor_ids:
             graph.add_edges([(floor_id, floor_node_id, {"type": "floor_belongs_building", "x": [],"viz_feat": "c",\
                                                         "linewidth":1.0, "alpha":0.5})])
+                    
              
         return graph
     
@@ -410,6 +431,540 @@ class SyntheticDatasetGenerator():
         working_graph = self.add_building_node(working_graph)
 
         return working_graph
+    
+    def add_buildings(self, graph, n_buildings = None, area_shape = None, area_radius = None):
+        """Function to add additional buildings in a given area shape, within a given area radius"""
+        n_buildings_default = 5
+        area_shape_default = "circular"
+        area_radius_default = 50.0
+        z_min_offset, z_max_offset = -2.0, 2.0  # offset to generate buildings within that range
+
+        # n_buildings is max range [1, n_buildings]
+        if n_buildings is None or n_buildings < 1:
+            n_buildings = n_buildings_default # default 
+            if self.logger:
+                self.logger.warning(f"n_buildings not defined or less than 1, applying default n_buildings = {n_buildings}")
+
+        n_extra = random.randint(1, int(n_buildings))
+
+        # normalize area shape
+        effective_area_shape = area_shape.lower()
+        if effective_area_shape is None or effective_area_shape not in ("circular", "square"):
+            effective_area_shape = area_shape_default # default
+            if self.logger:
+                self.logger.warning(f"Invalid area_shape = '{area_shape}'. Defaulting to 'circular'")
+
+        # area fallback
+        effective_area_radius = area_radius
+        if effective_area_radius is None:
+            effective_area_radius = area_radius_default # default 
+            if self.logger:
+                self.logger.info(
+                    f"area_radius not defined, using default: {effective_area_radius:.2f}"
+                )
+
+        # establish nodes to mimic the exact config of the original building
+        # this is to enable add_buildings to generate additional buildings even
+        # if the config generates a graph of only ws nodes
+        base_node_types = set()
+        for _, attrs in graph.get_attributes_of_all_nodes():
+            base_node_types.add(attrs.get("type"))
+
+        # empty graph handling
+        if not base_node_types:
+            base_node_types  = {"ws", "wall", "room", "floor", "building"}  # hierarchy fallback
+
+        # story setting helper
+        def _sample_config_n_stories():
+            max_n = 1
+            try:
+                pp = self.settings.get("postprocess", {})
+                if isinstance(pp, dict):
+                    for config, pp_list in pp.items():
+                        # only include add_buildings 
+                        if any(isinstance(p, dict) and p.get("pp_name") == "add_buildings" for p in pp_list):
+                            # look for add_stories
+                            for p in pp_list:
+                                if isinstance(p, dict) and p.get("pp_name") == "add_stories":
+                                    max_n = int(p.get("n_stories", 1))
+            except Exception:
+                pass
+            max_n = max(1, max_n)
+
+            # propagate and return array with random story distributions 
+            return[random.randint(1, max_n) for _ in range(n_extra)]
+
+        # additional story helpers
+        def _bbox_xy(bbox):
+            (minx, miny, *_), (maxx, maxy, *_) = bbox
+            return float(minx), float(miny), float(maxx), float(maxy)
+
+        def _uniform_scale_xy_about(gw, scale, about_xy):
+            """Uniformly scale all node geometries in XY about a given pivot."""
+            if abs(scale - 1.0) < 1e-9:
+                return
+            about_xy = np.asarray(about_xy[:2], dtype=float)
+
+            def _scale_pt(p):
+                p = np.asarray(p, dtype=float)
+                if p.shape[0] == 2:
+                    xy, z = p, 0.0
+                else:
+                    xy, z = p[:2], p[2]
+                xy = (xy - about_xy) * scale + about_xy
+                return np.array([xy[0], xy[1], z], dtype=float)
+
+            for nid, attrs in gw.get_attributes_of_all_nodes():
+                viz = attrs.get("viz", {})
+
+                if "center" in attrs:
+                    attrs["center"] = _scale_pt(attrs["center"])
+                if "center" in viz:
+                    viz["center"] = _scale_pt(viz["center"])
+                    attrs["viz"] = viz
+
+                if "limits" in attrs and isinstance(attrs["limits"], (list, tuple)) and len(attrs["limits"]) == 2:
+                    a, b = attrs["limits"]
+                    attrs["limits"] = [_scale_pt(a), _scale_pt(b)]
+                if "limits" in viz and isinstance(viz["limits"], (list, tuple)) and len(viz["limits"]) == 2:
+                    a, b = viz["limits"]
+                    viz["limits"] = [_scale_pt(a), _scale_pt(b)]
+                    attrs["viz"] = viz
+
+        def _translate_xy(gw, delta_xy):
+            """Translate all node geometries in XY by delta_xy."""
+            delta_xy = np.asarray(delta_xy[:2], dtype=float)
+
+            def _shift_pt(p):
+                p = np.asarray(p, dtype=float)
+                if p.shape[0] == 2:
+                    xy, z = p, 0.0
+                else:
+                    xy, z = p[:2], p[2]
+                xy = xy + delta_xy
+                return np.array([xy[0], xy[1], z], dtype=float)
+
+            for nid, attrs in gw.get_attributes_of_all_nodes():
+                viz = attrs.get("viz", {})
+
+                if "center" in attrs:
+                    attrs["center"] = _shift_pt(attrs["center"])
+                if "center" in viz:
+                    viz["center"] = _shift_pt(viz["center"])
+                    attrs["viz"] = viz
+
+                if "limits" in attrs and isinstance(attrs["limits"], (list, tuple)) and len(attrs["limits"]) == 2:
+                    a, b = attrs["limits"]
+                    attrs["limits"] = [_shift_pt(a), _shift_pt(b)]
+                if "limits" in viz and isinstance(viz["limits"], (list, tuple)) and len(viz["limits"]) == 2:
+                    a, b = viz["limits"]
+                    viz["limits"] = [_shift_pt(a), _shift_pt(b)]
+                    attrs["viz"] = viz
+
+        def _fit_floor_to_base_bbox(floor_gw, base_bbox):
+            """
+            Uniformly scale + align the floor so its XY AABB fits inside the base floor AABB.
+            Never scale up above 1.0 (floors can be smaller, not larger).
+            TODO: if time, make floors able to be larger than base to a certain threshold
+            """
+            # target (base) box
+            bminx, bminy, bmaxx, bmaxy = _bbox_xy(base_bbox)
+            tw, th = max(1e-9, bmaxx - bminx), max(1e-9, bmaxy - bminy)
+            tcenter = np.array([(bminx + bmaxx) / 2.0, (bminy + bmaxy) / 2.0], dtype=float)
+
+            # source (floor) box
+            fminx, fminy, fmaxx, fmaxy = _bbox_xy(floor_gw.get_bounding_box())
+            fw, fh = max(1e-9, fmaxx - fminx), max(1e-9, fmaxy - fminy)
+            fcenter = np.array([(fminx + fmaxx) / 2.0, (fminy + fmaxy) / 2.0], dtype=float)
+
+            # scale: fit inside target, but do not enlarge above 1.0
+            s_fit = min(tw / fw, th / fh)
+            s = min(1.0, s_fit)
+            _uniform_scale_xy_about(floor_gw, s, about_xy=fcenter)
+
+            # re-center to target center
+            _translate_xy(floor_gw, (tcenter - fcenter))
+
+
+        # rotation helper functions 
+        def _building_pivot(graph):
+            """pivot from building node (to ensure different floors are rotated identically as the base floor per building)"""
+            building_nodes = list(graph.filter_graph_by_node_types(["building"]).get_nodes_ids())
+            if building_nodes:
+                building_attrs = graph.get_attributes_of_node(building_nodes[0]) or {}
+                center = None
+
+                # prefer top-level center, fallback viz center, else origin
+                if "center" in building_attrs:
+                    center = np.asarray(building_attrs["center"], dtype=float)
+                elif "viz" in building_attrs and isinstance(building_attrs["viz"], dict) and "center" in building_attrs["viz"]:
+                    center = np.asarray(building_attrs["viz"]["center"], dtype=float)
+                if center is not None:
+                    if center.shape[0] == 2:
+                        center = np.append(center, 0.0)
+                    return center[:3]
+                
+                # fallback
+                center = graph.get_graph_center().astype(float, copy=False)
+                if center.shape[0] == 2:
+                    center = np.append(center, 0.0)
+                return center[:3]
+        
+        def _apply_rigid_z_rotation(graph, angle_rad, pivot_xyz, delta_xyz):
+            """
+            applies rigid z rotation for each building such that only the base is rotated
+            and the floors above mimic that rotation to prevent different rotations
+            for each individual floor
+            """
+            cos, sin = np.cos(angle_rad), np.sin(angle_rad)
+            R = np.array([[cos, -sin, 0.0],
+                        [sin, cos, 0.0],
+                        [0.0, 0.0, 1.0]], dtype=float)
+            
+            pivot = np.asarray(pivot_xyz, dtype=float)
+            if pivot.shape[0] == 2:
+                pivot = np.append(pivot, 0.0)
+            pivot = pivot[:3]
+
+            delta = np.asarray(delta_xyz, dtype=float)
+            if delta.shape[0] == 2:
+                delta = np.append(delta, 0.0)
+            delta = delta[:3]
+
+            def _rigid_point(p):
+                p = np.asarray(p, dtype=float)
+                if p.shape[0] == 2:
+                    p = np.append(p, 0.0)
+                p = p[:3]
+                return (R @ (p - pivot)) + pivot + delta
+
+            def _rot_normal(n):
+                n = np.asarray(n, dtype=float)
+                if n.shape[0] == 2:
+                    n = np.append(n, 0.0)
+                n = n[:3]
+                return (R @ n)
+
+            all_attrs = graph.get_attributes_of_all_nodes()
+            for nid, attrs in all_attrs:
+                viz = attrs.get("viz", {})
+
+                # centers
+                if "center" in attrs:
+                    attrs["center"] = _rigid_point(attrs["center"])
+                if "center" in viz:
+                    viz["center"] = _rigid_point(viz["center"])
+                    attrs["viz"] = viz
+
+                # limits (two endpoints)
+                if "limits" in attrs and isinstance(attrs["limits"], (list, tuple)) and len(attrs["limits"]) == 2:
+                    a, b = attrs["limits"]
+                    attrs["limits"] = [_rigid_point(a), _rigid_point(b)]
+                if "limits" in viz and isinstance(viz["limits"], (list, tuple)) and len(viz["limits"]) == 2:
+                    a, b = viz["limits"]
+                    viz["limits"] = [_rigid_point(a), _rigid_point(b)]
+                    attrs["viz"] = viz
+
+                # normals
+                if "normal" in attrs:
+                    attrs["normal"] = _rot_normal(attrs["normal"])
+
+        def _aabb2d_overlap(b1, b2, pad=0.0):
+            """Returns True if two 2D AABBs (XY only) overlap when each is expanded by padding"""
+            min1 = np.asarray(b1[0], float)[:2] - pad
+            max1 = np.asarray(b1[1], float)[:2] + pad
+            min2 = np.asarray(b2[0], float)[:2] - pad
+            max2 = np.asarray(b2[1], float)[:2] + pad
+            # Non-overlap if separated on any axis; otherwise overlap
+            sep = (max1[0] < min2[0]) or (max2[0] < min1[0]) or (max1[1] < min2[1]) or (max2[1] < min1[1])
+            return not sep
+
+        def _sample_non_overlapping_pose(candidate_gw, placed_bboxes, area_shape, area_radius, safety_dist=2.0, max_tries=200):
+            """
+            Sample a (random angle_rad, tranlsation_vector, bbox_after) for a building copy
+            such that its AABB (after ridig z transformation) does not overlap in (XY)
+            any bbox in "placed_bboxes" by at least "safety_dist"
+
+            Returns (angle_rad, translation_vector, bbox_after) or None if no pose found
+            """
+            def _random_orientation():
+                """Random angle for Z-rotation"""
+                return 2.0 * np.pi * random.random()
+            
+            def _sample_position():
+                """Return a random (dx, dy) displacement within the defined area"""
+                R = float(effective_area_radius)
+                if effective_area_shape == "circular":
+                    # circle: uniform over disk -> r = R*sqrt(u), theta ~ U[0, 2Pi)
+                    u = random.random()
+                    r = R * np.sqrt(u)
+                    theta = 2.0 * np.pi * random.random()
+                    return np.array([r * np.cos(theta), r * np.sin(theta), 0.0], dtype=float)
+                else:
+                    # square: uniform in [-R, R] x [-R, R]
+                    return np.array([
+                        random.uniform(-R, R),
+                        random.uniform(-R, R),
+                        0.0
+                    ], dtype=float)
+
+            for _ in range(max_tries):
+                angle = _random_orientation()
+                disp  = _sample_position()
+
+                # Build a temp copy, rigid-transform it, then test its bbox
+                temp = copy.deepcopy(candidate_gw)
+                pivot = _building_pivot(temp)
+
+                # Place pivot at base_center + disp: delta = (base_center + disp) - pivot
+                # base_center = base_building_gw.get_graph_center().astype(float, copy=False)
+                # if base_center.shape[0] == 2: base_center = np.append(base_center, 0.0)
+                delta = (anchor_z + disp) - pivot
+
+                _apply_rigid_z_rotation(temp, angle, pivot, delta)
+                bbox_new = temp.get_bounding_box()
+
+                # Check against all placed bboxes with XY padding = safety_dist per bbox
+                overlaps = any(_aabb2d_overlap(bbox_new, b, pad=safety_dist) for b in placed_bboxes)
+                if not overlaps:
+                    return angle, delta, bbox_new
+
+            return None  # give up after max_tries
+        
+        # Store initial building graph
+        combined_city_graph = copy.deepcopy(graph)
+
+        if "floor" in base_node_types:
+            combined_city_graph = self.add_floor_node(combined_city_graph)
+        if "builing" in base_node_types:
+            combined_city_graph = self.add_building_node(combined_city_graph)
+
+        # Get exisiting building node of the first building
+        building_nodes_original = list(combined_city_graph.filter_graph_by_node_types(["building"]).get_nodes_ids())
+        all_building_nodes_ids = []
+        if building_nodes_original:
+            all_building_nodes_ids.append(building_nodes_original[0])
+
+        # Reference center of base building to place additional buildings around it
+        base_center = graph.get_graph_center().astype(float, copy=False)
+
+        # ground anchor to prevent floating buildings
+        anchor_z = np.array([base_center[0], base_center[1], 0.0], dtype=float)
+
+        # Keep track of all building bounding boxes to avoid overlap when placing additional buildings
+        placed_bboxes = [combined_city_graph.get_bounding_box()]
+
+        # generate floor count array once before the building generatoin loop
+        n_stories_conf = _sample_config_n_stories()
+        if self.logger:
+            self.logger.info(f"Generated story array: {n_stories_conf}")
+
+        # determine config source type (msd, or synthetic)
+        source_type = self.settings.get("source", {}).get("type", "synthetic")
+        msd_source_graphs = self.graphs.get("original", [])
+
+        # prepare pool of uniques to avoid duplicates
+        msd_indicies_pool = []
+        if source_type == "msd" and msd_source_graphs:
+            msd_indicies_pool = list(range(len(msd_source_graphs)))
+            random.shuffle(msd_indicies_pool)  # shuffle to pick randomly but also not duplicates
+
+        # Generate and place additional buildings
+        for target_stories in n_stories_conf:
+            # determine base template (base of the building)
+            if source_type == "msd":
+                if not msd_source_graphs:
+                    if self.logger:
+                        self.logger.warning("No MSD graphs available to sample from.")
+                    continue
+
+                # check if unique buildings are stil left in pool, if not repropagete pool
+                # Note: current msd dataset has 3000+ buildings, this is just to make sure
+                # that if only a slice of that dataset is used, you still 
+                # generate additional buildings even if duplacte ones.
+                if not msd_indicies_pool:
+                    msd_indicies_pool = list(range(len(msd_source_graphs)))
+                    random.shuffle(msd_indicies_pool)
+                    if self.logger:
+                        self.logger.warning("Unique MSD builidngs exhausted, refilling pool (duplicates will occure).")
+
+                # pop unique idx
+                select_idx = msd_indicies_pool.pop()
+
+                # debug
+                if self.logger:
+                    self.logger.debug(f"selected msd building index: {select_idx} (Remaining pool: {len(msd_indicies_pool)})")
+                
+                print(f"selected msd building index: {select_idx} (Remaining pool: {len(msd_indicies_pool)})")
+
+                # deepcopy to ensure no modification of source
+                base_template = copy.deepcopy(msd_source_graphs[select_idx])
+
+                # ensure presence of floor node
+                if "floor" not in [attrs.get("type") for _, attrs in base_template.get_attributes_of_all_nodes()]:
+                    base_template = self.add_floor_node(base_template)
+            else:
+                # generate a new syntehtic building
+                base_matrix = self.generate_base_matrix()
+                base_template = self.generate_graph_from_base_matrix(base_matrix=base_matrix, add_noise=False)
+                base_template = self.add_floor_node(base_template)  # forced for placement logic calculation
+
+            # init new building object
+            new_builidng = copy.deepcopy(base_template)
+
+            # base building bbox
+            base_bbox = new_builidng.get_bounding_box()
+
+            story_height = 5  # must match add_stories()
+            for k in range(1, target_stories):
+                if source_type == "msd":
+                    # for msd additional floors are duplicates of the base
+                    floor_k = copy.deepcopy(base_template)
+                else:
+                    # for synthetic, generate a new random layout and scale it to keep within base floor dimensions
+                    fm = self.generate_base_matrix()
+                    floor_k = self.generate_graph_from_base_matrix(base_matrix=fm, add_noise=False)
+                    floor_k = self.add_floor_node(floor_k)
+
+                    # fit floor to base floor (never larger)
+                    _fit_floor_to_base_bbox(floor_k, base_bbox)
+
+                # stack at height k
+                floor_k.translate_geometries(np.array([0.0, 0.0, story_height * k],dtype=float))
+
+                # relable then merge
+                existing_ids_nb = new_builidng.get_nodes_ids()
+                numeric_ids_nb  = [nid for nid in existing_ids_nb if isinstance(nid, int)]
+                max_id_nb       = max(numeric_ids_nb) if numeric_ids_nb else -1
+                id_offset_nb    = max_id_nb + 1
+                id_map_nb       = {old_id: i + id_offset_nb for i, old_id in enumerate(floor_k.get_nodes_ids())}
+                floor_k.relabel_nodes(mapping=id_map_nb, copy=True)
+                new_builidng = new_builidng.merge_graph(floor_k)
+            
+            new_builidng = self.add_building_node(new_builidng)
+
+            # Ensure building node exists
+            # new_builidng = self.add_building_node(new_builidng)
+            new_builidng_b_nodes = list(new_builidng.filter_graph_by_node_types(["building"]).get_nodes_ids())
+            new_builidng_node_id_in_candidate = new_builidng_b_nodes[0] if new_builidng_b_nodes else None
+
+            # force z=0 for calculation
+            if new_builidng_node_id_in_candidate is not None:
+                b_attrs = new_builidng.get_attributes_of_node(new_builidng_node_id_in_candidate)
+
+                # center -> z = 0
+                if "center" in b_attrs:
+                    b_attrs["center"] = np.array([b_attrs["center"][0], b_attrs["center"][1], 0.0])
+                new_builidng.update_node_attrs(new_builidng_node_id_in_candidate, b_attrs)
+
+            # Attempt to sample a non-overlapping placement (angle + translation)
+            pose = _sample_non_overlapping_pose(
+                candidate_gw=new_builidng,                  # new building
+                placed_bboxes=placed_bboxes,             # already placed ones
+                area_shape=effective_area_shape,
+                area_radius=effective_area_radius,
+                safety_dist=5.0,                         # min spacing between buildings
+                max_tries=300
+            )
+
+            if pose is None:
+                if self.logger:
+                    self.logger.warning("Could not find non-overlapping placement — skipping this building copy.")
+                continue
+
+            angle, delta, bbox_after = pose
+
+            # generate building at random z within previously set bounds
+            z_displacement = random.uniform(z_min_offset, z_max_offset)
+            delta[2] += z_displacement
+
+            # build the copy and apply the non-overlapping transform
+            # current_building_copy = copy.deepcopy(graph)
+            pivot = _building_pivot(new_builidng)
+            _apply_rigid_z_rotation(new_builidng, angle, pivot, delta)
+
+            # geometry is set, strip out nodes to match the base building
+            # if base building only has WS, additional buildings should also only have WS
+            nodes_to_remove = []
+            for nid, attrs in new_builidng.get_attributes_of_all_nodes():
+                if attrs["type"] not in base_node_types:
+                    nodes_to_remove.append(nid)
+            new_builidng.remove_nodes(nodes_to_remove)
+
+            # Relabel all nodes of the current building copy to ensure unique IDs
+            existing_ids = combined_city_graph.get_nodes_ids()
+            numeric_ids = [nid for nid in existing_ids if isinstance(nid, int)]
+            max_id_in_combined = max(numeric_ids) if numeric_ids else -1
+            id_offset = max_id_in_combined + 1
+            id_mapping = {old_id: k + id_offset for k, old_id in enumerate(new_builidng.get_nodes_ids())}
+            new_builidng.relabel_nodes(mapping=id_mapping, copy=True)
+
+            # Get new Id of the building node for the current copy
+            if new_builidng_node_id_in_candidate is not None and "building" in base_node_types and new_builidng_node_id_in_candidate in id_mapping:
+                all_building_nodes_ids.append(id_mapping[new_builidng_node_id_in_candidate])
+
+            # ensure graph directionalities match before merging to avoid NetworkX error
+            if combined_city_graph.is_directed() and not new_builidng.graph.is_directed():
+                new_builidng.to_directed()
+            elif not combined_city_graph.is_directed() and new_builidng.graph.is_directed():
+                new_builidng.to_undirected()
+
+            # Merge the current builing copy into the combined city graph
+            combined_city_graph = combined_city_graph.merge_graph(new_builidng)
+            placed_bboxes.append(bbox_after)
+
+        if not all_building_nodes_ids:
+            return combined_city_graph
+
+        # get all existing ids
+        existing_ids = combined_city_graph.get_nodes_ids()
+        max_id = max(existing_ids) if existing_ids else -1
+
+        # Create and add city node
+        city_node_id = max_id + 1
+
+        # Caluclate city center after all buildings are merged
+        city_center = combined_city_graph.get_graph_center().astype(float, copy=False)
+        if city_center.shape[0] == 2:
+            city_center = np.append(city_center, 0.0)
+
+        # Get building node Z value
+        try:
+            building_viz_offset = np.asarray(self.viz_center_offsets.get("building", [0.0, 0.0, 0.0]), dtype=float)
+        except Exception:
+            building_viz_offset = np.array([0.0, 0.0, 0.0], dtype=float)
+
+        building_viz_z = float(building_viz_offset[2])
+        city_node_offset = 2  # define city node offset
+
+        # Put city node units under the lowest building node by city_node_offset
+        city_center[2] = building_viz_z - city_node_offset
+
+        # City relevant attributes
+        city_attrs = {
+            "type": "city",
+            "center": city_center.tolist(),
+            "viz": {
+                "type": "Point",
+                "center": city_center.tolist(),
+                "feat": "ko",
+                "markersize": 0.5
+            }
+        }
+        combined_city_graph.add_nodes([(city_node_id, city_attrs)])
+
+        # Connect city node to all building nodes
+        edge_batch = []
+        for building_id in all_building_nodes_ids:
+            if building_id is None:
+                continue
+            edge_batch.append((city_node_id, building_id, {"type": "contains_building", "viz_feat": "purple"}))
+            edge_batch.append((building_id, city_node_id, {"type": "belongs_to_city", "viz_feat": "purple"})) # Inverse edge
+
+        if edge_batch:
+            combined_city_graph.add_edges(edge_batch)
+        
+        return combined_city_graph
     
 
     def add_random_objects(self, graph, max_obj):
@@ -561,6 +1116,67 @@ class SyntheticDatasetGenerator():
         aux_graph = copy.deepcopy(working_graph)
         working_graph.remove_nodes(node_ids_selected)
 
+        # helper function
+        def node_exists(graph, nid):
+            """GraphWrapper-compatible existence check"""
+            try: 
+                # Will raise if nid is not present
+                _ = graph.get_attribute_of_node(nid)
+                return True
+            except Exception:
+                return False
+
+        
+        # build hierarchy list only from types that actually exist in aux_graph
+        try:
+            available_types = set(aux_graph.get_all_node_types())
+        except Exception:
+            # fallback 
+            available_types = set(["ws", "room", "wall", "floor", "building"])  # best effort
+
+        full_order = ["ws", "room", "floor", "building"]
+        hierarchy_types = [t for t in full_order if t in available_types]
+
+        updating_node_id = copy.deepcopy(node_id)
+
+        if update_higher_nodes and node_type in hierarchy_types:
+            start_idx = hierarchy_types.index(node_type) + 1
+            updatable_hierarchy_types = hierarchy_types[start_idx:]
+
+            for up_type in updatable_hierarchy_types:
+                candidates = list(
+                    aux_graph
+                        .get_neighbourhood_graph(updating_node_id)
+                        .filter_graph_by_node_types([up_type])
+                        .get_nodes_ids()
+                )
+                if not candidates:
+                    if self.logger:
+                        self.logger.warning(
+                            f"[dropout_by_hierarchy] No neighbour of type '{up_type}' "
+                            f"from node {updating_node_id} (type={node_type}). "
+                            f"Stopping hierarchy update."
+                        )
+                    break  # gracefully stop climbing if this hop doesn't exist
+
+                updating_node_id = candidates[0]
+
+                # only update if the target node still exists in working_graph
+                if node_exists(working_graph, updating_node_id):
+                    working_graph = self.update_node_attrs_by_hierarchy(
+                        updating_node_id, working_graph
+                    )
+                else:
+                    if self.logger:
+                        self.logger.warning(
+                            f"[dropout_by_hierarchy] Target node {updating_node_id} "
+                            f"no longer in working_graph. Skipping."
+                        )
+                    break
+
+        return working_graph
+
+        '''
         ### Update higher nodes
         hierchy_types = ["ws", "room", "floor", "building"]
         updating_node_id = copy.deepcopy(node_id)
@@ -572,6 +1188,7 @@ class SyntheticDatasetGenerator():
                     working_graph = self.update_node_attrs_by_hierarchy(updating_node_id, working_graph)
         
         return working_graph
+        '''
 
     def include_observations(self, working_graph, pp_settings):
         graph_sequence = [copy.deepcopy(working_graph)]
@@ -982,6 +1599,9 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "add_stories":
                 working_graph = self.add_stories(working_graph, pp_settings["n_stories"], pp_settings["add_floor_nodes"])
 
+            elif pp_settings["pp_name"] == "add_buildings":
+                working_graph = self.add_buildings(working_graph, pp_settings["n_buildings"], pp_settings["area_shape"], pp_settings["area_radius"])
+
             elif pp_settings["pp_name"] == "add_random_objects":
                 working_graph = self.add_random_objects(working_graph, pp_settings["max_obj"])
 
@@ -994,6 +1614,19 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "incremental_observations":
                 working_graph = self.include_observations(working_graph, pp_settings)
 
+            elif pp_settings["pp_name"] == "save_snapshot":
+                suffix = pp_settings.get("suffix", "processed")
+
+                # use timestamp to avoid overwriting
+                ts = int(time.time() * 1000)
+                file_name = f"graph_{suffix}_{ts}.pkl"
+                file_path = SAVE_DIR / file_name
+
+                self.save_wrappers_to_pickle([working_graph], str(file_path))
+
+                if self.logger:
+                    self.logger.info(f"Saved snapshot: {file_name}")
+
             return working_graph
 
         for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
@@ -1005,11 +1638,26 @@ class SyntheticDatasetGenerator():
                 base_graph = apply_postprocess(self, pp_settings, base_graph)
                 # part_2_end = time.time()
                 # print(f"dbg elapsed time in pp {pp_settings['pp_name']}: {part_2_end - part_1_end}")
+
+            def _as_sequence(graph):
+                return graph if isinstance(graph, list) else [graph]
             
-            if type(base_graph) == GraphWrapper and len(base_graph.get_nodes_ids()) > 0 and len(base_graph.get_edges_ids()) > 0:
-                new_nxdataset.append(base_graph)
-            elif type(base_graph) == list and base_graph:
-                new_nxdataset.extend([base_graph])
+            sequence = _as_sequence(base_graph)
+            valid_sequence = []
+
+            for graph in sequence:
+                if isinstance(graph, GraphWrapper):
+                    if len(graph.get_nodes_ids()) > 0 and len(graph.get_edges_ids()) > 0:
+                        valid_sequence.append(graph)
+
+            if valid_sequence:
+                new_nxdataset.append(valid_sequence)
+
+            # legacy code commented out 
+            #if type(base_graph) == GraphWrapper and len(base_graph.get_nodes_ids()) > 0 and len(base_graph.get_edges_ids()) > 0:
+            #    new_nxdataset.append(base_graph)
+            #elif type(base_graph) == list and base_graph:
+            #    new_nxdataset.extend([base_graph])
 
         val_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["val"]-self.settings["training_split"]["test"]))
         test_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["test"]))
@@ -1351,8 +1999,11 @@ class SyntheticDatasetGenerator():
             print(f"Loaded {len(raw_msd_graphs)} graphs from {path}")
             f.close()
 
+        # get settings limit or default to 100
+        msd_limit = self.settings["source"].get("limit", 100)
+
         graphs = []
-        for msd_graph in tqdm.tqdm(raw_msd_graphs[:100], desc="Processing MSD graphs", colour="red"):
+        for msd_graph in tqdm.tqdm(raw_msd_graphs[:msd_limit], desc="Processing MSD graphs", colour="red"):
 
             graphs.append(self.graph_from_msd(GraphWrapper(graph_obj = copy.deepcopy(msd_graph))))
 
