@@ -286,7 +286,7 @@ class SyntheticDatasetGenerator():
                 node_ID = max(graph.get_nodes_ids(), default=-1) + 1
                 orthogonal_normal = R.from_euler("Z", 90, degrees= True).apply(copy.deepcopy(normals[i]))
                 orthogonal_canonic_normal = R.from_euler("Z", 90, degrees= True).apply(copy.deepcopy(canonic_normals[i]))
-                ws_normal = np.array([-1,-1, 0])*normals[i]
+                ws_normal = np.array([-1,-1, 0], dtype=np.float64)*normals[i] ### DBG FLAG
                 ws_center = node_data[1]["center"] + abs(np.dot(np.array(node_data[1]['area'])/2,canonic_normals[i]))*np.array(normals[i])
 
                 ws_length = abs(np.dot(np.array(node_data[1]['area']),canonic_normals[i]))
@@ -555,12 +555,12 @@ class SyntheticDatasetGenerator():
 
         return working_graph
 
-    def dropout_by_hierarchy(self, node_id, working_graph, update_higher_nodes):
+    def dropout_by_hierarchy(self, node_id, working_graph, update_higher_nodes, remove_lower_nodes):
         node_type = working_graph.get_attributes_of_node(node_id)["type"]
 
         ### Remove nodes
         node_ids_selected = [node_id]
-        if node_type == "room":
+        if node_type == "room" and remove_lower_nodes:
             ws_node_ids = list(working_graph.get_neighbourhood_graph(node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
             node_ids_selected = node_ids_selected + ws_node_ids
             for ws_node_id in ws_node_ids:
@@ -581,9 +581,9 @@ class SyntheticDatasetGenerator():
         if update_higher_nodes:
             updatable_hierarchy_types = hierchy_types[(hierchy_types.index(node_type)+1):]
             for updatable_hierarchy_type in updatable_hierarchy_types:
-                updating_node_id = list(aux_graph.get_neighbourhood_graph(updating_node_id).filter_graph_by_node_types([updatable_hierarchy_type]).get_nodes_ids())[0]
-                if updating_node_id:
-                    working_graph = self.update_node_attrs_by_hierarchy(updating_node_id, working_graph)
+                higher_level_list = list(aux_graph.get_neighbourhood_graph(updating_node_id).filter_graph_by_node_types([updatable_hierarchy_type]).get_nodes_ids())
+                if higher_level_list:
+                    working_graph = self.update_node_attrs_by_hierarchy(higher_level_list[0], working_graph)
         
         return working_graph
 
@@ -669,17 +669,16 @@ class SyntheticDatasetGenerator():
                     for room_node_id in room_node_ids:
                         left_rooms = list(working_graph.filter_graph_by_node_types(["room"]).get_nodes_ids())
                         if len(left_rooms) > 1 and np.random.random_sample() < pp_settings["room"]:
-                            working_graph = self.dropout_by_hierarchy(room_node_id, working_graph, update_higher_nodes=True)
-                        #     node_ids_selected.append(room_node_id)
-                            
-                        #     ws_node_ids = list(working_graph.get_neighbourhood_graph(room_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
-                        #     node_ids_selected = node_ids_selected + ws_node_ids
-                        #     for ws_node_id in ws_node_ids:
-                        #         wall_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types(["wall"]).get_nodes_ids())
-                        #         for wall_ws_node_id in wall_ws_node_ids:
-                        #             if len(list(working_graph.get_neighbourhood_graph(wall_ws_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())) < 3:
-                        #                 node_ids_selected.append(wall_ws_node_id)
-                        # working_graph.remove_nodes(node_ids_selected)
+                            working_graph = self.dropout_by_hierarchy(room_node_id, working_graph, update_higher_nodes=True, remove_lower_nodes = pp_settings["remove_lower"])
+
+                ### wall dropout
+                if pp_settings["wall"] > 0.:
+                    room_node_ids = copy.deepcopy(list(working_graph.filter_graph_by_node_types(["wall"]).get_nodes_ids()))
+                    # node_ids_selected = []
+                    for room_node_id in room_node_ids:
+                        left_rooms = list(working_graph.filter_graph_by_node_types(["wall"]).get_nodes_ids())
+                        if len(left_rooms) > 1 and np.random.random_sample() < pp_settings["wall"]:
+                            working_graph = self.dropout_by_hierarchy(room_node_id, working_graph, update_higher_nodes=False, remove_lower_nodes = pp_settings["remove_lower"])
 
                 ### ws dropout  TODO FIX
                 if pp_settings["ws"] > 0.:
@@ -697,7 +696,7 @@ class SyntheticDatasetGenerator():
                         # left_in_same_room_ws_node_ids = list(set(same_room_ws_node_ids) - set(node_ids_selected))
                         if len(same_room_ws_node_ids) > 2 and np.random.random_sample() < pp_settings["ws"]:
                             # node_ids_selected.append(ws_node_id)
-                            working_graph = self.dropout_by_hierarchy(ws_node_id, working_graph, update_higher_nodes=True)
+                            working_graph = self.dropout_by_hierarchy(ws_node_id, working_graph, update_higher_nodes=True, remove_lower_nodes = pp_settings["remove_lower"])
                     # working_graph.remove_nodes(node_ids_selected)
 
             ### Include K nearest neighbouors edges
@@ -880,6 +879,7 @@ class SyntheticDatasetGenerator():
                     pl.plot_a_graph([working_graph.graph],viz_room_normals=True,viz_walls=False)
                 else:
                     fig = visualize_nxgraph_3d(working_graph, pp_settings["fig_name"], visualize_alone=pp_settings["visualize_alone"])
+                    # plt.show(block=True)
                 if pp_settings["save_path"]:
                     fig.savefig(pp_settings["save_path"], bbox_inches='tight')
             elif pp_settings["pp_name"] == "remove_self_loops":
@@ -919,36 +919,52 @@ class SyntheticDatasetGenerator():
                     working_graph.update_node_attrs(node_id, node_attrs)
 
             elif pp_settings["pp_name"] == "add_local_noise":
+                emergent_concepts = ["wall", "room", "floor", "building", "city"]
                 for node_id, node_attrs in working_graph.get_attributes_of_all_nodes():
-                    if "center" in node_attrs and node_attrs.get("type") == "ws":
+                    if "center" in node_attrs and node_attrs.get("type") == "ws" and "ws" in pp_settings["entities"]:
                         # Calculate local translation (only for the center)
                         local_translation = np.array(pp_settings["translation"]) * (np.random.rand(2) - 0.5)
 
                         # Calculate local rotation (for normal and limits)
                         local_rotation_angle = (np.random.rand() - 0.5) * 360 * pp_settings["rotation"]
                         rotation_matrix_2d = R.from_euler("Z", local_rotation_angle, degrees=True).as_matrix()[:2, :2]
+                        rotation_matrix_3d = R.from_euler("Z", local_rotation_angle, degrees=True).as_matrix()[:3, :3]
 
                         # --- TRANSLATE ONLY THE CENTER ---
                         new_center = node_attrs["center"][:2] + local_translation
-                        node_attrs["center"][:2] = new_center
-                        node_attrs["viz"]["center"] = new_center
+                        node_attrs["center"][0] = new_center[0]
+                        node_attrs["center"][1] = new_center[1]
+                        node_attrs["viz"]["center"][0] = new_center[0]
+                        node_attrs["viz"]["center"][1] = new_center[1]
 
                         # --- ROTATE ONLY THE NORMAL ---
                         if "normal" in node_attrs:
-                            new_normal = rotation_matrix_2d @ node_attrs["normal"][:2]
-                            node_attrs["normal"][:2] = new_normal
+                            new_normal = rotation_matrix_3d @ node_attrs["normal"]
+                            node_attrs["normal"][0] = new_normal[0]
+                            node_attrs["normal"][1] = new_normal[1]
 
                         # --- ROTATE THE LIMITS (without translation) ---
                         if "limits" in node_attrs:
-                            center = node_attrs["center"][:2]  # updated center
+                            center = node_attrs["center"]  # updated center
                             rotated_limits = []
                             for point in node_attrs["limits"]:
-                                vec = np.array(point[:2]) - center  # vector relative to the center
-                                rotated_point = center + rotation_matrix_2d @ vec  # rotate around the center
+                                vec = np.array(point) - center  # vector relative to the center
+                                rotated_point = center + rotation_matrix_3d @ vec  # rotate around the center
                                 rotated_limits.append(rotated_point.tolist())
                             node_attrs["limits"] = rotated_limits
 
-                        working_graph.update_node_attrs(node_id, node_attrs)
+
+                    elif "center" in node_attrs and node_attrs.get("type") in emergent_concepts and node_attrs.get("type") in pp_settings["entities"]:
+                        # Calculate local translation (only for the center)
+                        local_translation = np.array(pp_settings["translation"]) * (np.random.rand(2) - 0.5)
+
+                        new_center = node_attrs["center"][:2] + local_translation
+                        node_attrs["center"][0] = new_center[0]
+                        node_attrs["center"][1] = new_center[1]
+                        node_attrs["viz"]["center"][0] = new_center[0]
+                        node_attrs["viz"]["center"][1] = new_center[1]
+
+                    working_graph.update_node_attrs(node_id, node_attrs)
 
             elif pp_settings["pp_name"] == "msd_adaptation":
                 nodes_to_remove = []

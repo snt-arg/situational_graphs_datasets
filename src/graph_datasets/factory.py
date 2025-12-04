@@ -9,11 +9,11 @@ from graph_wrapper.GraphWrapper import GraphWrapper
 from graph_datasets.config import get_config as get_datasets_config
 
 dataset_base = "synthetic"  # "synthetic" or "msd"
-config_name = "ifh/ssg_manh_noise_small"
+config_name = "ifh/ssg_manh_small_floors_wo_node"  # name of the config file in graph_datasets/config
 extension_name = "original"  # "original" or "noise"
-pickle_name = "ifh/ssg_manh_noise_small_3000.pkl"
-n_graphs_reduction = 2
-save_pickle = False
+pickle_name = "ifh/ssg_manh_small_floors_wo_node_3000.pkl"
+n_graphs_reduction = None
+save_pickle = True
 visualize = False
 
 save_pickle_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/"
@@ -61,11 +61,12 @@ if visualize:
 
 if save_pickle:
     dataset_generator.save_networkx_graphs_to_pickle(all_dataset, full_save_path)
+    print(f'Saved {config_name} dataset to {full_save_path}')
 
 
 
-
-for key in ["ws", "wall", "room", "floor"]:
-    graph = all_dataset[0].filter_graph_by_node_types([key])
-    center = list(graph.get_attributes_of_all_nodes())[0][1]['center']
-    print(f'key {key}, type of center attribute: {type(center)}, element type {type(center[0])}, size {len(center)}, value {center}')
+# for key in ["ws", "wall", "room", "floor"]:
+#     graph = all_dataset[0].filter_graph_by_node_types([key])
+    
+#     center = list(graph.get_attributes_of_all_nodes())[0][1]['normal']
+#     print(f'key {key}, type of center attribute: {type(center)}, element type {type(center[0])}, size {len(center)}, value {center}')
