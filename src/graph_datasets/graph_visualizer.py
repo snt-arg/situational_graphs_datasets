@@ -1,8 +1,15 @@
+import matplotlib
+import os
+
+matplotlib.use("TkAgg")   # or "Qt5Agg"
+
 import matplotlib.pyplot as plt
+
+
 import numpy as np
 import networkx as nx
 import torch
-from matplotlib.patches import ConnectionPatch
+# from matplotlib.patches import ConnectionPatch
 from mpl_toolkits.mplot3d import proj3d  # Add this import at the top of your file
 
 
