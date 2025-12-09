@@ -794,8 +794,6 @@ class SyntheticDatasetGenerator():
                 # debug
                 if self.logger:
                     self.logger.debug(f"selected msd building index: {select_idx} (Remaining pool: {len(msd_indicies_pool)})")
-                
-                print(f"selected msd building index: {select_idx} (Remaining pool: {len(msd_indicies_pool)})")
 
                 # deepcopy to ensure no modification of source
                 base_template = copy.deepcopy(msd_source_graphs[select_idx])

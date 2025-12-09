@@ -68,7 +68,7 @@ class InteractiveGraphVisualizer:
         self.edge_keys = []             # List of actual keys
 
         # added to ensure logic from SDG
-        # offsets from SDG
+        # z offsets from SDG
         self.viz_center_offsets = {
             "ws": np.array([0, 0, 0]), 
             "room": np.array([0, 0, 2]), 
@@ -86,7 +86,7 @@ class InteractiveGraphVisualizer:
             "floor": "go",
             "building": "co",
             "wall": "mo",
-            "city": "bo"      # City usually blue
+            "city": "ko"      # City usually black
         }
 
         self.hovered_edge = None  # stores tuple (u,v) on hover
@@ -338,11 +338,20 @@ class InteractiveGraphVisualizer:
             raw_center = self._ensure_3d(attr.get("center", [0,0,0]))
 
             # apply visual offset
-            node_type = attr.get("type", "unknown")
+            node_type = attr.get("type", "unknown").lower().strip()
             offset = self.viz_center_offsets.get(node_type, np.array([0,0,0]))
 
-            # get new center from raw data + visual offset
-            center = raw_center + offset
+            # fix mature graph visualization
+            # if a mature graph is passed, the nodes would visualize at the wrong z position
+            if node_type in ["building", "city"]:
+                center = np.array([
+                    raw_center[0] + offset[0],
+                    raw_center[1] + offset[1],
+                    offset[2]
+                ])
+            else:
+                # get new center from raw data + visual offset
+                center = raw_center + offset
             
             # update lookups (for interaction)
             self.node_coords[node_id] = center  # essential for update_selection()

@@ -8,7 +8,7 @@ from graph_wrapper.GraphWrapper import GraphWrapper
 
 from graph_datasets.config import get_config as get_datasets_config
 
-dataset = "synthetic"
+dataset = "msd"
 viz_lim = 3  # limit for visualizations (specifically for msd)
 
 if dataset == "synthetic":
