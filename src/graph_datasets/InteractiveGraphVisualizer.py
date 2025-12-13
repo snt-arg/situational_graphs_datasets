@@ -520,6 +520,7 @@ class InteractiveGraphVisualizer:
             "Shift+B  : Create Building\n"
             "Shift+C  : Create City\n"
             "Del         : Delete Selection\n"
+            "Shift+R  : Force Node Position recalculation\n"
             "Shift+S  : Save Graph\n"
             "=========================\n"
             "w : Working Edges\n"
@@ -897,6 +898,11 @@ class InteractiveGraphVisualizer:
             if self.logger:
                 self.logger.info(f"Deleted nodes: {ids_to_delete}")
 
+            # recalculate all node positions after node deletion
+            self.full_graph.recalculate_hierarchy_centers()
+            if self.graph != self.full_graph:
+                self.graph.recalculate_hierarchy_centers()
+
             # clear selection and redraw
             self.active_groups = {}
 
@@ -923,6 +929,11 @@ class InteractiveGraphVisualizer:
 
             if self.logger:
                 self.logger.info(f"Deleted edge between {u} and {v}")
+
+            # recalculate all node positions after edge deletion
+            self.full_graph.recalculate_hierarchy_centers()
+            if self.graph != self.full_graph:
+                self.graph.recalculate_hierarchy_centers()
 
             # clear hover state
             self.hovered_edge = None
@@ -1059,7 +1070,7 @@ class InteractiveGraphVisualizer:
                 self.logger.info(f"Toggled node ids to {self.include_node_ids}")
             self.draw_graph(preserve_view=True)
             return
-        if event.key == "h":
+        if event.key == "h":  # toggle control help
             self.show_controls = not self.show_controls
             if self.logger:
                 self.logger.info(f"Toggled control display to {self.show_controls}")
@@ -1091,6 +1102,19 @@ class InteractiveGraphVisualizer:
             if self.logger:
                 self.logger.info(f"Deleted selected node and corresponding edges")
             return
+        if event.key == "R":  # shift + R for reload
+            if self.full_graph:
+                if self.logger:
+                    self.logger.info("Recalculating hierarchy positions...")
+
+                    self.full_graph.recalculate_hierarchy_centers()
+
+                    # sync visualization if separate
+                    if self.graph != self.full_graph and self.graph is not None:
+                        self.graph.recalculate_hierarchy_centers()
+
+                    self.draw_graph(preserve_view=True)
+                return
         
         # save graph 
         if event.key == "S":  # Shift + s (s in matplotlib is screenshot)

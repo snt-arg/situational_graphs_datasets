@@ -1642,8 +1642,11 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "incremental_observations":
                 working_graph = self.include_observations(working_graph, pp_settings)
 
-            elif pp_settings["pp_name"] == "update_viz":
-                working_graph._add_complete_viz_attributes_to_graph(self.viz_center_offsets, self.node_viz_feat_mapping)
+            # elif pp_settings["pp_name"] == "update_viz":
+            #    working_graph._add_complete_viz_attributes_to_graph(self.viz_center_offsets, self.node_viz_feat_mapping)
+
+            elif pp_settings["pp_name"] == "recalculate_positions":
+                working_graph.recalculate_hierarchy_centers()
 
             elif pp_settings["pp_name"] == "save_snapshot":
                 suffix = pp_settings.get("suffix", "processed")
