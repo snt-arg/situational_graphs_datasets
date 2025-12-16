@@ -9,11 +9,11 @@ from graph_wrapper.GraphWrapper import GraphWrapper
 from graph_datasets.config import get_config as get_datasets_config
 
 dataset_base = "synthetic"  # "synthetic" or "msd"
-config_name = "ifh/ssg_manh_small_floors_wo_node"  # name of the config file in graph_datasets/config
+config_name = "ifh/ssg_L_noise_small"  # name of the config file in graph_datasets/config
 extension_name = "original"  # "original" or "noise"
-pickle_name = "ifh/ssg_manh_small_floors_wo_node_3000.pkl"
+pickle_name = "ifh/ssg_L_noise_small_3000.pkl"
 n_graphs_reduction = None
-save_pickle = True
+save_pickle = True 
 visualize = False
 
 save_pickle_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/"

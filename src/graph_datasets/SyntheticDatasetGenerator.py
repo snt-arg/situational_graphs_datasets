@@ -1027,6 +1027,9 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "update_viz":
                 working_graph._add_complete_viz_attributes_to_graph(self.viz_center_offsets, self.node_viz_feat_mapping)
 
+            elif pp_settings["pp_name"] == "randomize_edges":
+                working_graph = working_graph.randomize_edges(pp_settings["percentage"])
+
             return working_graph
 
         for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
