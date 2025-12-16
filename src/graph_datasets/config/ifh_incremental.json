@@ -69,7 +69,8 @@
                 ]
             ]},
             {"pp_name": "add_floor_node"},
-            {"pp_name": "add_stories", "add_floor_nodes": false,"n_stories": 1},
+            {"pp_name": "add_stories", "add_floor_nodes": false,"n_stories": 2},
+            {"pp_name": "add_buildings", "add_city_node": true, "n_buildings": 3, "area_shape": "circular", "radius":50},
             {"pp_name": "merge_edge_types", "common_type":"common"},
             {"pp_name": "to_undirected"},
             {"pp_name": "incremental_observations", "elements": {"room": [1, 2]}}
