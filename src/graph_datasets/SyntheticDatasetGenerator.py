@@ -1661,6 +1661,9 @@ class SyntheticDatasetGenerator():
                 if self.logger:
                     self.logger.info(f"Saved snapshot: {file_name}")
 
+            elif pp_settings["pp_name"] == "randomize_edges":
+                working_graph = working_graph.randomize_edges(pp_settings["percentage"])
+
             return working_graph
 
         for i in tqdm.tqdm(range(len(nxdataset)), colour="green"):
