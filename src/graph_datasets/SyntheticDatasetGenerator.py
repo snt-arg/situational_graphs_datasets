@@ -23,7 +23,7 @@ import sys
 import os
 import ast
 
-SAVE_DIR = Path("/home/sven/project/Dataset/Synthetic")
+SAVE_DIR = Path("./../../../datasets/")
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
 import plot as pl
@@ -426,6 +426,7 @@ class SyntheticDatasetGenerator():
         story_height = 3
         initial_graph = copy.deepcopy(graph)
         working_graph = copy.deepcopy(graph)
+        n_floors = random.randint(1, n_floors)
         for n_floor in range(n_floors - 1):
             new_graph = copy.deepcopy(initial_graph)
 
@@ -2037,7 +2038,7 @@ class SyntheticDatasetGenerator():
             f.close()
 
         # get settings limit or default to 100
-        msd_limit = self.settings["source"].get("limit", 100)
+        msd_limit = self.settings["source"].get("limit", len(raw_msd_graphs))
 
         graphs = []
         for msd_graph in tqdm.tqdm(raw_msd_graphs[:msd_limit], desc="Processing MSD graphs", colour="red"):

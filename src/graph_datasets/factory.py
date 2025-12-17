@@ -8,13 +8,13 @@ from graph_wrapper.GraphWrapper import GraphWrapper
 
 from graph_datasets.config import get_config as get_datasets_config
 
-dataset_base = "synthetic"  # "synthetic" or "msd"
-config_name = "ifh/ssg_L_noise_small"  # name of the config file in graph_datasets/config
+dataset_base = "msd"  # "synthetic" or "msd"
+config_name = "ifh/msd_buildings"  # name of the config file in graph_datasets/config
 extension_name = "original"  # "original" or "noise"
-pickle_name = "ifh/ssg_L_noise_small_3000.pkl"
-n_graphs_reduction = None
-save_pickle = True 
-visualize = False
+pickle_name = "ifh/msd_buildings_3467.pkl"
+n_graphs_reduction = 3
+save_pickle = False
+visualize = True
 
 save_pickle_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/"
 full_save_path = os.path.join(save_pickle_path, pickle_name)
@@ -40,6 +40,7 @@ elif dataset_base == "msd":
     # extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["original"], "training", "training")
 
     all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
+    all_dataset = [g[0] for g in all_dataset]
 
 if visualize:
     for graph in all_dataset:
@@ -47,13 +48,12 @@ if visualize:
             visualize_nxgraph_3d(graph, "train data", visualize_alone=True, include_node_ids=False)
             plt.show()
         elif type(graph) == list:
-            print(f'dbg new sequence of graphs of length {len(graph)}')
+            # print(f'dbg new sequence of graphs of length {len(graph)}')
             for i, graph_i in enumerate(graph):
                 if i == len(graph) - 1:
                     blocking = True
                 else:
                     blocking = False
-                print(blocking)
 
                 if type(graph_i) == GraphWrapper:
                     visualize_nxgraph_3d(graph_i, f"train data {i}", visualize_alone=True, include_node_ids=False, blocking=blocking)
