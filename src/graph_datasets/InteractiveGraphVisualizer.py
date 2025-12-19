@@ -561,7 +561,7 @@ class InteractiveGraphVisualizer:
         if self.show_controls:
             # text2D places text in screen coordinates (0,0 is bottom-left, 1,1 is top-right)
             self.ax.text2D(
-                0.02, 0.20,             # X=2%, Y=20% (bottom left corner)
+                0.02, 0.25,             # X=2%, Y=20% (bottom left corner)
                 controls_text,
                 transform=self.fig.transFigure,  # Anchors text to the window, not the 3D graph
                 verticalalignment='top',
@@ -572,7 +572,7 @@ class InteractiveGraphVisualizer:
             )
         else:
             self.ax.text2D(
-                0.02, 0.05,             # X=2%, Y=5% (bottom left corner)
+                0.02, 0.10,             # X=2%, Y=5% (bottom left corner)
                 "h : Toggle Control Display",
                 transform=self.fig.transFigure,  # Anchors text to the window, not the 3D graph
                 verticalalignment='top',
