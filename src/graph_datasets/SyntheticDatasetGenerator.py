@@ -23,9 +23,6 @@ import sys
 import os
 import ast
 
-SAVE_DIR = Path("/home/sven/project/Dataset/Synthetic")
-SAVE_DIR.mkdir(parents=True, exist_ok=True)
-
 import plot as pl
 
 # graph_wrapper_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"graph_wrapper")
@@ -51,6 +48,15 @@ class SyntheticDatasetGenerator():
         self.logger = logger
         self.report_path = report_path
         self.dataset_name = dataset_name
+
+        # dynamic save dir (either from settings or relative to file path)
+        if "save_dir" in self.settings:
+            self.save_dir = Path(self.settings["save_dir"])
+        else:
+            self.save_dir = Path(__file__).parent / "output_dataset"
+
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
         self.dataset_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), self.report_path, self.dataset_name)
         self.graphs = {"original":[],"noise":[],"views":[],"extended":[]}
         
@@ -130,7 +136,7 @@ class SyntheticDatasetGenerator():
         }
 
         self.viz_center_offsets = {"ws": np.array([0, 0, 0]), "room": np.array([0, 0, 2]), "wall": np.array([0, 0, 1]),\
-                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, -2]), "object": np.array([0, 0, 0.5])}
+                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, 3]), "object": np.array([0, 0, 0.5]), "city": np.array([0, 0, 5])}
                 
 
     def normalize_features(self, type, feats):
@@ -400,25 +406,28 @@ class SyntheticDatasetGenerator():
                 self.logger.info("Hierarchy Check: Skipping 'add_building_nodes'. No node of type 'floor' found to support node of type 'building'")
             return graph
 
-        floor_centers = [attr[1]["center"] for attr in floors_attrs]
-        building_center = np.array(floor_centers).sum(axis=0) / len(floor_centers)
+        floor_centers = np.array([attr[1]["center"] for attr in floors_attrs])
 
-        floor_node_id = max(graph.get_nodes_ids()) + 1
+        # calc XY as mean but Z as MAX + offset
+        avg_xy = floor_centers[:, :2].mean(axis=0)  
+        max_z = floor_centers[:, 2].max()
 
-        viz_building_center = copy.deepcopy(building_center)
-        # viz_building_center[2] = 0  # Ensure z-coordinate is zero for visualization
-        viz_building_center += self.viz_center_offsets["building"]
+        bn_offset = 2.0
+        building_center = np.array([avg_xy[0], avg_xy[1], max_z + bn_offset])
+
+        building_node_id = max(graph.get_nodes_ids()) + 1
+
+        viz_building_center = building_center + self.viz_center_offsets["building"]
         building_viz = copy.deepcopy(viz_data_base)
         building_viz.update({"type": "Point", "feat": "co","center": viz_building_center})
 
-        graph.add_nodes([(floor_node_id,{"type" : "building", "x" : building_center, "center" : building_center, "viz" : building_viz})])
+        graph.add_nodes([(building_node_id,{"type" : "building", "x" : building_center, "center" : building_center, "viz" : building_viz})])
 
         # Specifically connect Floor only to Building
         floor_ids = [attr[0] for attr in floors_attrs]
         for floor_id in floor_ids:
-            graph.add_edges([(floor_id, floor_node_id, {"type": "floor_belongs_building", "x": [],"viz_feat": "c",\
+            graph.add_edges([(floor_id, building_node_id, {"type": "floor_belongs_building", "x": [],"viz_feat": "c",\
                                                         "linewidth":1.0, "alpha":0.5})])
-                    
              
         return graph
     
@@ -462,7 +471,7 @@ class SyntheticDatasetGenerator():
         n_extra = random.randint(1, int(n_buildings))
 
         # normalize area shape
-        effective_area_shape = area_shape.lower()
+        effective_area_shape = area_shape.lower()  # type: ignore
         if effective_area_shape is None or effective_area_shape not in ("circular", "square"):
             effective_area_shape = area_shape_default # default
             if self.logger:
@@ -850,7 +859,7 @@ class SyntheticDatasetGenerator():
                 max_id_nb       = max(numeric_ids_nb) if numeric_ids_nb else -1
                 id_offset_nb    = max_id_nb + 1
                 id_map_nb       = {old_id: i + id_offset_nb for i, old_id in enumerate(floor_k.get_nodes_ids())}
-                floor_k.relabel_nodes(mapping=id_map_nb, copy=True)
+                floor_k.relabel_nodes(mapping=id_map_nb, copy=True)  # type: ignore
                 new_builidng = new_builidng.merge_graph(floor_k)
             
             new_builidng = self.add_building_node(new_builidng)
@@ -927,30 +936,58 @@ class SyntheticDatasetGenerator():
 
         if not all_building_nodes_ids:
             return combined_city_graph
+        
+        # enforce same Z for all building nodes based on highest one
+        bn_offset = 2.0  # without offset building node would place withing heighest floor node
 
-        # get all existing ids
-        existing_ids = combined_city_graph.get_nodes_ids()
-        max_id = max(existing_ids) if existing_ids else -1
+        floors_all = combined_city_graph.filter_graph_by_node_types(["floor"]).get_attributes_of_all_nodes()
+        if floors_all:
+            floor_centers = np.array([np.asarray(attrs["center"], dtype=float) for _, attrs in floors_all])
+            max_floor_z = float(floor_centers[:, 2].max())
+            global_building_z = max_floor_z + bn_offset
+        else:
+            # fallback: if no floor nodes exist, fall back to current building-node heights
+            building_nodes_tmp = combined_city_graph.filter_graph_by_node_types(["building"]).get_attributes_of_all_nodes()
+            global_building_z = float(
+                max(np.asarray(attrs.get("center", [0.0, 0.0, 0.0]), dtype=float)[2] for _, attrs in building_nodes_tmp)
+            ) if building_nodes_tmp else 10.0
 
-        # Create and add city node
-        city_node_id = max_id + 1
+        building_nodes = combined_city_graph.filter_graph_by_node_types(["building"]).get_attributes_of_all_nodes()
+        if building_nodes:
+            for bid, b_attrs in building_nodes:
+                c = np.asarray(b_attrs.get("center", [0.0, 0.0, 0.0]), dtype=float)
+                if c.shape[0] == 2:
+                    c = np.append(c, 0.0)
 
-        # Caluclate city center after all buildings are merged
-        city_center = combined_city_graph.get_graph_center().astype(float, copy=False)
-        if city_center.shape[0] == 2:
-            city_center = np.append(city_center, 0.0)
+                # keep XY, set Z to global height
+                c[2] = global_building_z
+                b_attrs["center"] = c
+                b_attrs["x"] = c  # keep consistent with add_building_node()
 
-        # Get building node Z value
-        try:
-            building_viz_offset = np.asarray(self.viz_center_offsets.get("building", [0.0, 0.0, 0.0]), dtype=float)
-        except Exception:
-            building_viz_offset = np.array([0.0, 0.0, 0.0], dtype=float)
+                # update viz center accordingly
+                viz = b_attrs.get("viz", {})
+                if isinstance(viz, dict):
+                    off = np.asarray(self.viz_center_offsets["building"], dtype=float)
+                    v = np.asarray(viz.get("center", c + off), dtype=float)
+                    if v.shape[0] == 2:
+                        v = np.append(v, 0.0)
+                    v[:2] = c[:2] + off[:2]
+                    v[2]  = c[2]  + float(off[2])
+                    viz["center"] = v
+                    b_attrs["viz"] = viz
 
-        building_viz_z = float(building_viz_offset[2])
-        city_node_offset = 2  # define city node offset
+                combined_city_graph.update_node_attrs(bid, b_attrs)
 
-        # Put city node units under the lowest building node by city_node_offset
-        city_center[2] = building_viz_z - city_node_offset
+            # create and place city node based on (now unified) building node centers
+            b_centers = np.array([np.asarray(attr[1]["center"], dtype=float) for attr in building_nodes])
+            avg_xy = b_centers[:, :2].mean(axis=0)
+            max_z = float(b_centers[:, 2].max())
+            city_center = np.array([avg_xy[0], avg_xy[1], max_z + 4.0], dtype=float)
+        else:
+            city_center = combined_city_graph.get_graph_center()
+            city_center[2] += 10.0  # Fallback
+
+        city_node_id = max(combined_city_graph.get_nodes_ids()) + 1
 
         # City relevant attributes
         city_attrs = {
@@ -958,7 +995,7 @@ class SyntheticDatasetGenerator():
             "center": city_center.tolist(),
             "viz": {
                 "type": "Point",
-                "center": city_center.tolist(),
+                "center": (city_center + self.viz_center_offsets.get("city", [0,0,5])).tolist(),
                 "feat": "ko",
                 "markersize": 0.5
             }
@@ -1654,7 +1691,7 @@ class SyntheticDatasetGenerator():
                 # use timestamp to avoid overwriting
                 ts = int(time.time() * 1000)
                 file_name = f"graph_{suffix}_{ts}.pkl"
-                file_path = SAVE_DIR / file_name
+                file_path = self.save_dir / file_name
 
                 self.save_wrappers_to_pickle([working_graph], str(file_path))
 
