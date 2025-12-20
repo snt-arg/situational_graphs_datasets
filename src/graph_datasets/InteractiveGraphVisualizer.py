@@ -111,12 +111,12 @@ class InteractiveGraphVisualizer:
             self.has_qt = True
             self.QtInputDialog = QInputDialog
 
-            if self.fig.canvas.manager.toolbar:
-                win = self.fig.canvas.manager.window        # get window ojbects
-                toolbar = self.fig.canvas.manager.toolbar   # get toolbar ojects
+            if self.fig.canvas.manager.toolbar:             # type: ignore
+                win = self.fig.canvas.manager.window        # get window ojbects  # type: ignore
+                toolbar = self.fig.canvas.manager.toolbar   # get toolbar ojects  # type: ignore
 
                 # puts toolbar at the bottom like the standard TkAgg GUI manager
-                win.addToolBar(QtCore.Qt.BottomToolBarArea, toolbar)
+                win.addToolBar(QtCore.Qt.BottomToolBarArea, toolbar)  # type: ignore
         except Exception:
             ########################### JUST PASS IF NOT USING QT #############################
             # Qt is actually highly recommended to replace the old TkAgg (Tkinter)            #
@@ -248,9 +248,9 @@ class InteractiveGraphVisualizer:
             saved_cam_state = {
                 "elev": self.ax.elev,
                 "azim": self.ax.azim,
-                "xlim": self.ax.get_xlim3d(),
-                "ylim": self.ax.get_ylim3d(),
-                "zlim": self.ax.get_zlim3d()
+                "xlim": self.ax.get_xlim3d(),  # type: ignore
+                "ylim": self.ax.get_ylim3d(),  # type: ignore
+                "zlim": self.ax.get_zlim3d()   # type: ignore
             }
 
         self.ax.cla()  # clears entire graph on each draw and uses a lot of performance
@@ -291,6 +291,7 @@ class InteractiveGraphVisualizer:
         floor_candidates = set()
         visible_room_ids = set()
 
+        # visibility loop
         for node_id, attr in nodes_data:
             node_type = attr.get("type", "unknown")
             center = self._ensure_3d(attr.get("center", [0,0,0]))
@@ -329,10 +330,13 @@ class InteractiveGraphVisualizer:
         
         manual_hierarchy_nodes = {"room", "floor", "building", "city"}
 
-        # process nodes
+        # drawing loop
         for node_id, attr in nodes_data:
             if node_id not in visible_node_ids:
                 continue
+
+            # extract nested viz
+            viz = attr.get("viz", {})
         
             # get raw center data
             raw_center = self._ensure_3d(attr.get("center", [0,0,0]))
@@ -359,50 +363,71 @@ class InteractiveGraphVisualizer:
             self.node_ids_list.append(node_id)
             temp_coords_list.append(center)
 
-            # styling
-            node_type = attr.get("type", "Point")
-            fmt = attr.get("viz_feat", "ko")
-            color = _mpl_color_from_feat(fmt)
+            # determine viz type:
+            v_type = viz.get("type", attr.get("viz_type"))
+            if not v_type:
+                if node_type in ["ws", "wall", "door", "window"]:
+                    v_type = "Line"
+                else: 
+                    v_type = "Point"
 
-            marker = "o"
-            possible_markers = {".", "o", "v", "^", "s", "*", "+", "x"}
-            for char in fmt:
-                if char in possible_markers:
-                    marker = char
-                    break
+            # nested
+            v_feat = viz.get("feat", attr.get("viz_feat", "k"))
 
-            if node_type == "ws": color = "red"
-            size = 50 if node_type in manual_hierarchy_nodes else 30
-
-            # add to scatter batch
-            batch_key = (marker, size)
-            if batch_key not in scatter_batches:
-                scatter_batches[batch_key] = {"points": [], "colors": []}
-            
-            scatter_batches[batch_key]["points"].append(center)
-            scatter_batches[batch_key]["colors"].append(color)
-
-            # add legend
-            if node_type not in legend_handles:
-                h = self.ax.scatter([], [], [], marker=marker, color=color, label=node_type)
-                legend_handles[node_type] = h
-
-            # handle spcific viz types
-            if attr["viz_type"] == "Line":
-                viz_data = np.array(attr["viz_data"])
-                if viz_data.shape[1] == 2:
-                    viz_data = np.hstack([viz_data, np.zeros((viz_data.shape[0], 1))])
+            if v_type == "Point":
+                color = _mpl_color_from_feat(v_feat)
                 
-                line_fmt = attr.get("viz_feat", "k-")
-                line_color = _mpl_color_from_feat(line_fmt)
-                linewidth = attr.get("linewidth", 1.5)
+                if node_type == "ws":
+                    color = "red"
                 
-                self.ax.plot(viz_data[:,0], viz_data[:,1], viz_data[:,2], c=line_color, linewidth=linewidth)
+                marker = "o"
+                possible_markers = {".", "o", "v", "^", "s", "*", "+", "x"}
+                for char in v_feat:
+                    if char in possible_markers:
+                        marker = char
+                        break
                 
-                if self.show_normals:
-                    normal_3d = self._ensure_3d(attr.get("normal", [0,0,1]))
-                    norm_line = np.stack([center, center + normal_3d/4])
-                    self.ax.plot(norm_line[:,0], norm_line[:,1], norm_line[:,2], "b", linewidth=linewidth)
+                size = 50 if node_type in manual_hierarchy_nodes else 30
+
+                # add to scatter batch
+                batch_key = (marker, size)
+                if batch_key not in scatter_batches:
+                    scatter_batches[batch_key] = {"points": [], "colors": []}
+                
+                scatter_batches[batch_key]["points"].append(center)
+                scatter_batches[batch_key]["colors"].append(color)
+
+                # add legend
+                if node_type not in legend_handles:
+                    h = self.ax.scatter([], [], [], marker=marker, color=color, label=node_type)
+                    legend_handles[node_type] = h
+                
+            # handle lines
+            elif v_type == "Line":
+                viz_data = None
+                
+                if "limits" in viz:
+                    viz_data = np.array(viz["limits"])
+                elif "limits" in attr:
+                    viz_data = np.array(attr["limits"])
+                elif "data" in viz:
+                    viz_data = np.array(viz["data"])
+                elif "viz_data" in attr:
+                    viz_data = np.array(attr["viz_data"])
+
+                if viz_data is not None:
+                    if viz_data.shape[1] == 2: # handle 2D lines
+                        viz_data = np.hstack([viz_data, np.zeros((viz_data.shape[0], 1))])
+
+                    line_color = _mpl_color_from_feat(v_feat)
+                    linewidth = attr.get("linewidth", 1.5)
+                    
+                    self.ax.plot(viz_data[:,0], viz_data[:,1], viz_data[:,2], c=line_color, linewidth=linewidth)
+                    
+                    if self.show_normals:
+                        normal_3d = self._ensure_3d(attr.get("normal", [0,0,1]))
+                        norm_line = np.stack([center, center + normal_3d/4])
+                        self.ax.plot(norm_line[:,0], norm_line[:,1], norm_line[:,2], "b", linewidth=linewidth)
 
             if self.show_node_centers:
                 # add center dot to batches
@@ -428,7 +453,7 @@ class InteractiveGraphVisualizer:
             colors = data["colors"] # This is a list of color strings/tuples
             
             # one draw call for all colors sharing this marker/size
-            self.ax.scatter(pts[:,0], pts[:,1], pts[:,2], 
+            self.ax.scatter(pts[:,0], pts[:,1], pts[:,2],       
                             c=colors, marker=marker, s=size, depthshade=False)
 
         # process edges
@@ -459,8 +484,11 @@ class InteractiveGraphVisualizer:
             p2 = temp_coords_list[idx2]
             segments.append([p1, p2])
 
-            fmt = attr.get("viz_feat", "k-")
-            color = _mpl_color_from_feat(fmt)
+            # check if nested
+            edge_viz = attr.get("viz", {})
+            e_feat = edge_viz.get("feat", attr.get("viz_feat", "k-"))
+
+            color = _mpl_color_from_feat(e_feat)
             edge_colors.append(color)
 
             # compiled legend for all edges into the "common" label
@@ -533,7 +561,7 @@ class InteractiveGraphVisualizer:
         if self.show_controls:
             # text2D places text in screen coordinates (0,0 is bottom-left, 1,1 is top-right)
             self.ax.text2D(
-                0.02, 0.20,             # X=2%, Y=20% (bottom left corner)
+                0.02, 0.25,             # X=2%, Y=20% (bottom left corner)
                 controls_text,
                 transform=self.fig.transFigure,  # Anchors text to the window, not the 3D graph
                 verticalalignment='top',
@@ -544,7 +572,7 @@ class InteractiveGraphVisualizer:
             )
         else:
             self.ax.text2D(
-                0.02, 0.05,             # X=2%, Y=5% (bottom left corner)
+                0.02, 0.10,             # X=2%, Y=5% (bottom left corner)
                 "h : Toggle Control Display",
                 transform=self.fig.transFigure,  # Anchors text to the window, not the 3D graph
                 verticalalignment='top',
