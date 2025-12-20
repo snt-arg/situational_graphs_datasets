@@ -2,7 +2,7 @@
     "source" : {
         "type": "msd",
         "pickle_path": "/home/adminpc/workspaces/reasoning_ws/src/msd/data/msd_from_notebook_all.pickle",
-        "limit": 3
+        "limit": 99999
     },
     "noise":{
         "global":{

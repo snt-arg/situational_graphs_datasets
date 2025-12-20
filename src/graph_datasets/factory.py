@@ -4,12 +4,14 @@ import matplotlib.pyplot as plt
 import json, os, time, sys
 import networkx as nx
 from graph_wrapper.GraphWrapper import GraphWrapper
+import pickle
+import numpy as np
 
 
 from graph_datasets.config import get_config as get_datasets_config
 
-dataset_base = "msd"  # "synthetic" or "msd"
-config_name = "ifh/msd_buildings"  # name of the config file in graph_datasets/config
+dataset_base = "custom_pickle"  # "synthetic" or "msd"
+config_name = "ifh/msd"  # name of the config file in graph_datasets/config
 extension_name = "original"  # "original" or "noise"
 pickle_name = "ifh/msd_buildings_3467.pkl"
 n_graphs_reduction = 3
@@ -41,6 +43,24 @@ elif dataset_base == "msd":
 
     all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
     all_dataset = [g[0] for g in all_dataset]
+
+elif dataset_base == "custom_pickle":
+    import joblib
+
+    # # Load the pickle file with joblib
+    # data = joblib.load('/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0planes_graphs.pkl')
+
+    # # Save the data again with joblib
+    # all_dataset = joblib.dump(data, '/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0planes_graphs_newversion.pkl')
+    with open("/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0/planes_graphs.pkl", 'rb') as f:
+            all_dataset = pickle.load(f)
+            f.close()
+    # with open('/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0planes_graphs.pkl', 'rb') as f:
+    #     all_dataset = pickle.load(f, encoding='bytes')
+    #     f.close()
+    # import dill
+    # with open('/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0/planes_graphs.pkl', 'rb') as f:
+    #     data = dill.load(f)
 
 if visualize:
     for graph in all_dataset:
