@@ -67,7 +67,10 @@ class SyntheticDatasetGenerator():
             self.define_norm_limits()
 
         elif settings["source"]["type"] == "msd":
-            self.dataset_from_msd(settings["source"]["pickle_path"])
+            self.dataset_from_msd(settings["source"]["pickle_path"])  # expects file
+
+        elif settings["source"]["type"] == "disk":
+            self.dataset_from_disk(settings["source"]["folder_path"])  # expects folder
             
 
     def correct_json_initfeat_keys(self, settings):
@@ -367,7 +370,7 @@ class SyntheticDatasetGenerator():
 
         return graph
     
-    def add_floor_node(self, graph):
+    def add_floor_node(self, graph, z_cluster: float = 0.5):
         rooms_attrs = graph.filter_graph_by_node_attributes({"type" : "room"}).get_attributes_of_all_nodes()
 
         # Maintain hierarchy. if no room exists, floor cannot exist
@@ -376,6 +379,48 @@ class SyntheticDatasetGenerator():
                 self.logger.info("Hierarchy Check: Skipping 'add_floor_nodes'. No node of type 'room' found to support node of type 'floor'")
             return graph
         
+        # skip if floor already exists
+        existing_floors = list(graph.filter_graph_by_node_types(["floor"]).get_nodes_ids())
+        if existing_floors:
+            return graph
+        
+        # cluster rooms by z (story) to avoid floor node connected to all rooms
+        clusters: dict[int, list[tuple[int, dict]]] = {}
+        for rid, r_attrs in rooms_attrs:
+            c = np.asarray(r_attrs.get("center", [0.0, 0.0, 0.0]), dtype=float)
+            if c.shape[0] == 2:
+                c = np.append(c, 0.0)
+
+            z = float(c[2])
+            z_bin = int(round(z/max(z_cluster, 1e-6)))
+            clusters.setdefault(z_bin, []).append((rid, r_attrs))
+        
+        next_id = max(graph.get_nodes_ids(), default=-1) + 1
+        
+        for z_bin, members in sorted(clusters.items(), key=lambda kv: kv[0]):
+            room_centers = [np.asarray(m[1].get("center", [0.0, 0.0, 0.0]), dtype=float) for m in members]
+            room_centers = [c if c.shape[0] == 3 else np.append(c, 0.0) for c in room_centers]
+            floor_center = np.mean(np.array(room_centers), axis=0)
+            
+            floor_node_id = next_id
+            next_id += 1
+            
+            viz_floor_center = floor_center + self.viz_center_offsets["floor"]
+            floor_viz = copy.deepcopy(viz_data_base)
+            floor_viz.update({"type": "Point", "feat": "go", "center": viz_floor_center})
+            
+            graph.add_nodes([(floor_node_id, {"type": "floor", "x": floor_center, "center": floor_center, "viz": floor_viz})])
+            
+            for rid, _ in members:
+                graph.add_edges([(rid, floor_node_id, {
+                    "type": "room_belongs_floor",
+                    "x": [],
+                    "viz_feat": "g",
+                    "linewidth": 1.0,
+                    "alpha": 0.5
+                })])
+        
+        """
         # calc center strictly from room
         room_centers = [attr[1]["center"] for attr in rooms_attrs]
         floor_center = np.mean(np.array(room_centers), axis=0)
@@ -394,6 +439,7 @@ class SyntheticDatasetGenerator():
         for room_id in room_ids:
             graph.add_edges([(room_id, floor_node_id, {"type": "room_belongs_floor", "x": [],"viz_feat": "g",\
                                                         "linewidth":1.0, "alpha":0.5})])
+        """
         
         return graph   
     
@@ -758,8 +804,10 @@ class SyntheticDatasetGenerator():
         combined_city_graph = copy.deepcopy(graph)
 
         if "floor" in base_node_types:
-            combined_city_graph = self.add_floor_node(combined_city_graph)
-        if "builing" in base_node_types:
+            has_floor = any(attrs.get("type") == "floor" for _, attrs in combined_city_graph.get_attributes_of_all_nodes())
+            if not has_floor:
+                combined_city_graph = self.add_floor_node(combined_city_graph)
+        if "building" in base_node_types:
             combined_city_graph = self.add_building_node(combined_city_graph)
 
         # Get exisiting building node of the first building
@@ -937,57 +985,84 @@ class SyntheticDatasetGenerator():
         if not all_building_nodes_ids:
             return combined_city_graph
         
-        # enforce same Z for all building nodes based on highest one
+        # place all building nodes above its own highest floor
         bn_offset = 2.0  # without offset building node would place withing heighest floor node
 
-        floors_all = combined_city_graph.filter_graph_by_node_types(["floor"]).get_attributes_of_all_nodes()
-        if floors_all:
-            floor_centers = np.array([np.asarray(attrs["center"], dtype=float) for _, attrs in floors_all])
-            max_floor_z = float(floor_centers[:, 2].max())
-            global_building_z = max_floor_z + bn_offset
-        else:
-            # fallback: if no floor nodes exist, fall back to current building-node heights
-            building_nodes_tmp = combined_city_graph.filter_graph_by_node_types(["building"]).get_attributes_of_all_nodes()
-            global_building_z = float(
-                max(np.asarray(attrs.get("center", [0.0, 0.0, 0.0]), dtype=float)[2] for _, attrs in building_nodes_tmp)
-            ) if building_nodes_tmp else 10.0
+        nxg_city = combined_city_graph.graph
+        def _neighbors_any_dir_city(nid):
+            if hasattr(nxg_city, "predecessors") and hasattr(nxg_city, "successors"):
+                return set(nxg_city.predecessors(nid)) | set(nxg_city.successors(nid))  # type: ignore
+            return set(nxg_city.neighbors(nid))
 
-        building_nodes = combined_city_graph.filter_graph_by_node_types(["building"]).get_attributes_of_all_nodes()
+        building_nodes = list(combined_city_graph.filter_graph_by_node_types(["building"]).get_attributes_of_all_nodes())
+        for bid, b_attrs in building_nodes:
+            # Find floor neighbors of this building
+            floor_neighbors = []
+            try:
+                for nb in _neighbors_any_dir_city(bid): 
+                    nb_attrs = combined_city_graph.get_attributes_of_node(nb)
+                    if nb_attrs and nb_attrs.get("type") == "floor":
+                        floor_neighbors.append(nb)
+            except Exception:
+                # if graph is directed or neighbors() fails, just skip gracefully
+                continue
+
+            if not floor_neighbors:
+                continue
+
+            # compute max Z among this buildings floors
+            floor_zs = []
+            for fid in floor_neighbors:
+                f_attrs = combined_city_graph.get_attributes_of_node(fid)
+                c = np.asarray(f_attrs.get("center", [0.0, 0.0, 0.0]), dtype=float)
+                if c.shape[0] == 2:
+                    c = np.append(c, 0.0)
+                floor_zs.append(float(c[2]))
+
+            if not floor_zs:
+                continue
+
+            # Update building node center
+            c = np.asarray(b_attrs.get("center", [0.0, 0.0, 0.0]), dtype=float)
+            if c.shape[0] == 2:
+                c = np.append(c, 0.0)
+
+            c[2] = max(floor_zs) + bn_offset
+            b_attrs["center"] = c
+            b_attrs["x"] = c  # keep consistent with add_building_node()
+
+            # Update viz center accordingly
+            viz = b_attrs.get("viz", {})
+            if isinstance(viz, dict):
+                off = np.asarray(self.viz_center_offsets["building"], dtype=float)
+                viz["center"] = c + off
+                b_attrs["viz"] = viz
+
+            combined_city_graph.update_node_attrs(bid, b_attrs)
+
+        city_node_id = max(combined_city_graph.get_nodes_ids()) + 1
+        city_offset = self.viz_center_offsets["city"]
+
+        # recompute after update
+        building_nodes = list(combined_city_graph.filter_graph_by_node_types(["building"]).get_attributes_of_all_nodes())
         if building_nodes:
+            b_centers = []
+            b_zs = []
             for bid, b_attrs in building_nodes:
                 c = np.asarray(b_attrs.get("center", [0.0, 0.0, 0.0]), dtype=float)
                 if c.shape[0] == 2:
                     c = np.append(c, 0.0)
+                b_centers.append(c)
+                b_zs.append(float(c[2]))
 
-                # keep XY, set Z to global height
-                c[2] = global_building_z
-                b_attrs["center"] = c
-                b_attrs["x"] = c  # keep consistent with add_building_node()
-
-                # update viz center accordingly
-                viz = b_attrs.get("viz", {})
-                if isinstance(viz, dict):
-                    off = np.asarray(self.viz_center_offsets["building"], dtype=float)
-                    v = np.asarray(viz.get("center", c + off), dtype=float)
-                    if v.shape[0] == 2:
-                        v = np.append(v, 0.0)
-                    v[:2] = c[:2] + off[:2]
-                    v[2]  = c[2]  + float(off[2])
-                    viz["center"] = v
-                    b_attrs["viz"] = viz
-
-                combined_city_graph.update_node_attrs(bid, b_attrs)
-
-            # create and place city node based on (now unified) building node centers
-            b_centers = np.array([np.asarray(attr[1]["center"], dtype=float) for attr in building_nodes])
-            avg_xy = b_centers[:, :2].mean(axis=0)
-            max_z = float(b_centers[:, 2].max())
-            city_center = np.array([avg_xy[0], avg_xy[1], max_z + 4.0], dtype=float)
+            b_centers = np.array(b_centers, dtype=float)
+            city_center = b_centers.mean(axis=0)
+            city_center[2] = max(b_zs) + city_offset[2]
         else:
-            city_center = combined_city_graph.get_graph_center()
-            city_center[2] += 10.0  # Fallback
-
-        city_node_id = max(combined_city_graph.get_nodes_ids()) + 1
+            # fallback if no buildings (shouldn't happen in normal generation)
+            city_center = combined_city_graph.get_graph_center().astype(float, copy=False)
+            if city_center.shape[0] == 2:
+                city_center = np.append(city_center, 0.0)
 
         # City relevant attributes
         city_attrs = {
@@ -995,7 +1070,7 @@ class SyntheticDatasetGenerator():
             "center": city_center.tolist(),
             "viz": {
                 "type": "Point",
-                "center": (city_center + self.viz_center_offsets.get("city", [0,0,5])).tolist(),
+                "center": (city_center + city_offset).tolist(),
                 "feat": "ko",
                 "markersize": 0.5
             }
@@ -1041,7 +1116,7 @@ class SyntheticDatasetGenerator():
             poly = Polygon(ordered_points)
             return poly
         
-        def random_points_in_polygon(polygon, n):
+        def random_points_in_polygon(polygon, n, z_val):
             """
             Randomly sample n points inside a shapely Polygon.
             Returns a list of shapely Point objects.
@@ -1057,7 +1132,7 @@ class SyntheticDatasetGenerator():
             if len(points) < n:
                 print(f"Warning: Only found {len(points)} points inside the polygon after {attempts} attempts.")
             
-            points_list = [[point.x, point.y, 0] for point in points]
+            points_list = [[point.x, point.y, float(z_val)] for point in points]
             return points_list
         
         rooms_ids = copy.deepcopy(graph.filter_graph_by_node_types("room").get_nodes_ids())
@@ -1071,18 +1146,25 @@ class SyntheticDatasetGenerator():
 
             poly = lines_to_polygon(segments)
 
-            obj_poses = random_points_in_polygon(poly, random.randint(0, max_obj + 1))
+            room_center = np.asarray(graph.get_attributes_of_node(room_id)["center"], dtype=float)
+            room_z = float(room_center[2])
+
+            obj_poses = random_points_in_polygon(poly, random.randint(0, max_obj + 1), z_val=room_z)
 
             new_edges = []
             for obj_pose in obj_poses:
                 obj_id = max(graph.get_nodes_ids()) + 1
                 
+                obj_pose = np.asarray(obj_pose, dtype=float)
                 viz_obj_pose = obj_pose + self.viz_center_offsets["object"]
                 obj_viz = copy.deepcopy(viz_data_base)
                 obj_viz.update({"type": "Point", "feat": 'ks', "center": viz_obj_pose})
 
                 graph.add_nodes([(obj_id,{"type" : "object", "x" : obj_pose, "center" : obj_pose, "viz" : obj_viz})])
                 new_edges.append((obj_id, room_id, {"type": "object_same_room", "x":[], "viz_feat": "black", "linewidth":1.0, "alpha":0.5}))
+
+            if new_edges:
+                graph.add_edges(new_edges)
             
         return graph
     
@@ -1225,19 +1307,328 @@ class SyntheticDatasetGenerator():
 
         return working_graph
 
-        '''
-        ### Update higher nodes
-        hierchy_types = ["ws", "room", "floor", "building"]
-        updating_node_id = copy.deepcopy(node_id)
-        if update_higher_nodes:
-            updatable_hierarchy_types = hierchy_types[(hierchy_types.index(node_type)+1):]
-            for updatable_hierarchy_type in updatable_hierarchy_types:
-                higher_level_list = list(aux_graph.get_neighbourhood_graph(updating_node_id).filter_graph_by_node_types([updatable_hierarchy_type]).get_nodes_ids())
-                if higher_level_list:
-                    working_graph = self.update_node_attrs_by_hierarchy(higher_level_list[0], working_graph)
+    def _remove_room_subgraph(self, graph: GraphWrapper, room_id, remove_planes: bool = True):
+        """
+        Removes one room and all directly related lower-hierachry entities:
+        - room node
+        - ws nodes
+        - wall nodes
+        - object nodes
+        - all corresponding edges
         
-        return working_graph
-        '''
+        :param graph: graph passed to deconstruct
+        :param room_id: room id of room to be deleted
+        """
+        # fast existance check
+        existing = set(graph.get_nodes_ids())
+        if room_id not in existing:
+            return graph
+        
+        nodes_to_remove = {room_id}
+
+        nxg = graph.graph
+        def _neighbors_any_dir_local(nid):
+            if hasattr(nxg, "predecessors") and hasattr(nxg, "successors"):
+                return set(nxg.predecessors(nid)) | set(nxg.successors(nid))  # type: ignore
+            return set(nxg.neighbors(nid))
+
+        # obj connected to room
+        try:
+            # obj_ids = list(graph.get_neighbourhood_graph(room_id).filter_graph_by_node_types(["object"]).get_nodes_ids())
+            obj_ids = [n for n in _neighbors_any_dir_local(room_id) if nxg.nodes[n].get("type") == "object"]
+            nodes_to_remove.update(obj_ids)
+        except Exception:
+            pass
+        
+        # ws connected to room
+        if remove_planes:
+            ws_ids = []
+            try:
+                # ws_ids = list(graph.get_neighbourhood_graph(room_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())
+                ws_ids = [n for n in _neighbors_any_dir_local(room_id) if nxg.nodes[n].get("type") == "ws"]
+                nodes_to_remove.update(ws_ids)
+            except Exception:
+                pass
+
+            # wall + wall_ws connected to ws
+            for ws_id in ws_ids:
+                try:
+                    # wall_ids = list(graph.get_neighbourhood_graph(room_id).filter_graph_by_node_types(["wall"]).get_nodes_ids())
+                    wall_ids = [n for n in _neighbors_any_dir_local(ws_id) if nxg.nodes[n].get("type") == "wall"]
+                    nodes_to_remove.update(wall_ids)
+                except Exception:
+                    pass
+
+                # make sure wall_ws is also removed due to inconsistency 
+                try:
+                    # wall_ws_ids = list(graph.get_neighbourhood_graph(room_id).filter_graph_by_node_types(["wall_ws"]).get_nodes_ids())
+                    wall_ws_ids = [n for n in _neighbors_any_dir_local(ws_id) if nxg.nodes[n].get("type") == "wall_ws"]
+                    nodes_to_remove.update(wall_ws_ids)
+                except Exception:
+                    pass
+
+        # remove only nodes that still exist
+        existing = set(graph.get_nodes_ids())
+        graph.remove_nodes([nid for nid in nodes_to_remove if nid in existing])
+        return graph 
+    
+    def deconstruct_graph_room_by_room(
+            self,
+            graph: GraphWrapper,
+            save_dir: str | None = None,
+            seed: int | None = None,
+            include_init: bool = True,
+            return_sequence: bool = False,
+            save_filename: str = "deconstruction_sequence.pkl",
+    ):
+        """
+        Function to incrementally deconstruct a mature graph:
+        - pick random building
+        - top floor down to bottom floor
+        - remove room one by one
+        - when a floor has no rooms left -> delete floor node
+        - when building has no floors left -> delete building node
+        Saves and returns a sequence of GW snapshots. 
+        
+        Args:
+            :param graph: graph to deconstruct
+            :param save_dir: path to save incremental snapshots
+            :param seed: seed for deconstruction using random function
+            :param include_init: include initial passed graph in new save dir
+            :param return_sequence: decide whether function returns in-memory sequence or not
+        """
+        debug_prints = False
+
+        # inc_graph = copy.deepcopy(graph)
+        nx_base = graph.graph
+        nx_concrete = nx_base.copy()
+
+        if not nx_concrete.is_directed():
+            nx_concrete = nx_concrete.to_directed()
+
+        if debug_prints:
+            print("[DBG] input graph:", nx_concrete.number_of_nodes(), "nodes,", nx_concrete.number_of_edges(), "edges")
+
+        inc_graph = GraphWrapper(graph_obj=nx_concrete)
+        nxg = inc_graph.graph
+
+        rng = random.Random(seed)
+
+        # prep save location
+        out_dir = None
+        if save_dir is not None:
+            out_dir = Path(save_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+        # init sequence pairs 
+        seq_pair: list[tuple[GraphWrapper, GraphWrapper]] = []
+
+        def _snapshot(gw: GraphWrapper) -> GraphWrapper:
+            return copy.deepcopy(gw)
+
+        # notify print
+        print(f"Running incremental deconstruction: save_dir: {save_dir}")
+
+        # include initial graph 
+        if include_init:
+            seq_pair.append((_snapshot(inc_graph), _snapshot(inc_graph)))
+
+        # define planes to remove second
+        PLANE_TYPES = {"ws", "wall", "wall_ws", "wallsurface"}
+
+        def _z_of(nid):
+            try:
+                center = np.asarray(inc_graph.get_attributes_of_node(nid).get("center", [0.0,0.0,0.0]), dtype=float)
+                if center.shape[0] == 2:
+                    return 0.0
+                return float(center[2])
+            except Exception:
+                return 0.0
+            
+        def _neighbors_any_dir(nid):
+            if inc_graph.is_directed():
+                return set(nxg.predecessors(nid)) | set(nxg.successors(nid))  # type: ignore
+            return set(nxg.neighbors(nid))
+            
+        def _nodes_of_type(type: str):  # helper to type less :) 
+            return [n for n, d in nxg.nodes(data=True) if d.get("type") == type]
+        
+        def _has_child_of_type(pid, child_type: str) -> bool:
+            if pid not in set(inc_graph.get_nodes_ids()):
+                return False
+            return any(nxg.nodes[n].get("type") == child_type for n in _neighbors_any_dir(pid))
+        
+        def _remove_if_empty_floor_building_city(fid, bid):
+            """
+            remove higherlevel nodes
+            -> remove floor if it has no more rooms,
+            -> remove building if it has no more floors,
+            -> remove city if it has no more builidngs,
+            all in memeory; to avoid orphaned nodes in snapshot
+            """
+            # remove floor
+            if fid is not None and fid in set(inc_graph.get_nodes_ids()):
+                if not _has_child_of_type(fid, "room"):
+                    inc_graph.remove_nodes([fid])
+
+            # remove building 
+            if bid is not None and bid in set(inc_graph.get_nodes_ids()):
+                if not _has_child_of_type(bid, "floor"):
+                    inc_graph.remove_nodes([bid])
+
+            # remove city
+            if not _nodes_of_type("building"):
+                cid = _nodes_of_type("city")
+                if cid:
+                    inc_graph.remove_nodes(cid)
+        
+        def _purge_empty_hierarchy_nodes():
+            """
+            enforce no orphans, ensure atomic deconstruction
+            - no floor wtihout rooms
+            - no bulding without floor
+            """
+            while True:
+                removed = False
+                existing = set(inc_graph.get_nodes_ids())
+
+                # remove orphan floors
+                floor_ids = [n for n, d in nxg.nodes(data=True) if d.get("type") == "floor" and n in existing]
+                orphan_floors = []
+                for fid in floor_ids:
+                    has_room = any(nxg.nodes[n].get("type") == "room" for n in _neighbors_any_dir(fid))
+                    if not has_room:
+                        orphan_floors.append(fid)
+                if orphan_floors:
+                    inc_graph.remove_nodes(orphan_floors)
+                    removed = True
+                    existing = set(inc_graph.get_nodes_ids())
+
+                # remove orphan buildings
+                building_ids = [n for n, d in nxg.nodes(data=True) if d.get("type") == "building" and n in existing]
+                orphan_buildings = []
+                for bid in building_ids:
+                    has_room = any(nxg.nodes[n].get("type") == "floor" for n in _neighbors_any_dir(bid))
+                    if not has_room:
+                        orphan_buildings.append(bid)
+                if orphan_buildings:
+                    inc_graph.remove_nodes(orphan_buildings)
+                    removed = True
+                    existing = set(inc_graph.get_nodes_ids())
+
+                # remove orphan city
+                city_ids = [n for n, d in nxg.nodes(data=True) if d.get("type") == "city" and n in existing]
+                if city_ids:
+                    has_building = any(d.get("type") == "building" for n, d in nxg.nodes(data=True) if n in existing)
+
+                    if not has_building:
+                        inc_graph.remove_nodes(city_ids)
+                        removed = True
+                        existing = set(inc_graph.get_nodes_ids())
+
+                if not removed:
+                    break
+
+        while True:
+            # building_ids = list(inc_graph.filter_graph_by_node_types(["building"]).get_nodes_ids())  # incredilby slow
+            building_ids = [n for n, d in nxg.nodes(data=True) if d.get("type") == "building"]
+            if not building_ids:
+                break
+
+            # choose random building
+            bid = rng.choice(building_ids)
+
+            # handle directionality
+            if not inc_graph.is_directed():
+                neigh_nodes = set(nxg.neighbors(bid)) | {bid}
+            else:
+                neigh_nodes = set(nxg.predecessors(bid)) | set(nxg.successors(bid)) | {bid} # type: ignore
+
+            floor_ids = [n for n in neigh_nodes if nxg.nodes[n].get("type") == "floor"]
+            floor_ids = sorted(set(floor_ids), key=_z_of, reverse=True)  # reverse: top -> bottom
+
+            # remove building if no floors connected to prevent spinning
+            if not floor_ids:
+                inc_graph.remove_nodes([bid])
+                _purge_empty_hierarchy_nodes()
+                continue
+
+            if debug_prints:
+                print(f"[DBG] picked building {bid} with {len(floor_ids)} floors (top z={_z_of(floor_ids[0]) if floor_ids else None})")
+
+            for fid in floor_ids:
+                if fid not in set(inc_graph.get_nodes_ids()):
+                    continue
+
+                # rooms on current floor 
+                room_ids = [n for n in _neighbors_any_dir(fid) if nxg.nodes[n].get("type") == "room"]
+
+                # remove floor if no rooms connect to preven endless loop
+                if not room_ids:
+                    _remove_if_empty_floor_building_city(fid=fid, bid=bid)
+                    _purge_empty_hierarchy_nodes()
+                    continue
+
+                while room_ids:
+                    rid = rng.choice(room_ids)
+
+                    # remove room, ws, wall, obj
+                    self._remove_room_subgraph(inc_graph, rid, remove_planes=False)
+
+                    # atomic cascade removal 
+                    _remove_if_empty_floor_building_city(fid=fid, bid=bid)
+                    _purge_empty_hierarchy_nodes()
+
+                    # recalculate hierarchy nodes XY positions
+                    try:
+                        inc_graph.recalculate_hierarchy_centers()
+                    except Exception as e:
+                        if debug_prints:
+                            print(f"[DBG] recalc failed (A): {e}")
+
+                    # save snapshot after removal
+                    # _save_snapshot()
+                    snap_A = _snapshot(inc_graph)
+
+                    existing = set(inc_graph.get_nodes_ids())
+                    plane_ids = [n for n, d in nxg.nodes(data=True) if d.get("type") in PLANE_TYPES and n in existing]
+
+                    planes_to_remove = []
+                    for pid in plane_ids:
+                        has_room_neigh = any(nxg.nodes[n].get("type") == "room" for n in _neighbors_any_dir(pid))
+                        if not has_room_neigh:
+                            planes_to_remove.append(pid)
+
+                    if planes_to_remove:
+                        inc_graph.remove_nodes(planes_to_remove)
+
+                    # atomic cascade
+                    _remove_if_empty_floor_building_city(fid=fid, bid=bid)
+                    _purge_empty_hierarchy_nodes()
+
+                    # recalculate hierarchy nodes XY positions
+                    try:
+                        inc_graph.recalculate_hierarchy_centers()
+                    except Exception as e:
+                        if debug_prints:
+                            print(f"[DBG] recalc failed (B): {e}")
+
+
+                    snap_B = _snapshot(inc_graph)
+
+                    seq_pair.append((snap_A, snap_B))
+
+                    # refresh room list
+                    if fid not in set(inc_graph.get_nodes_ids()):
+                        break
+                    room_ids = [n for n in _neighbors_any_dir(fid) if nxg.nodes[n].get("type") == "room"]
+
+        if out_dir is not None:
+            with open(out_dir / save_filename, "wb") as f:
+                pickle.dump(seq_pair, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+        return seq_pair if return_sequence else inc_graph
+    
 
     def include_observations(self, working_graph, pp_settings):
         graph_sequence = [copy.deepcopy(working_graph)]
@@ -1684,6 +2075,22 @@ class SyntheticDatasetGenerator():
 
             elif pp_settings["pp_name"] == "recalculate_positions":
                 working_graph.recalculate_hierarchy_centers()
+            
+            elif pp_settings["pp_name"] == "incremental_deconstruct":
+                # get config settings
+                # print(f"[DBG] apply_postprocess: 'incremental_deconstruct'")
+                return_sequence = bool(pp_settings.get("return_sequence", False))
+                include_init = bool(pp_settings.get("include_init", True))
+                save_dir = pp_settings.get("save_dir", None)
+                seed = pp_settings.get("seed", None)
+
+                working_graph = self.deconstruct_graph_room_by_room(
+                    working_graph,
+                    save_dir=save_dir,
+                    seed=seed,
+                    include_init=include_init,
+                    return_sequence=return_sequence,
+                )
 
             elif pp_settings["pp_name"] == "save_snapshot":
                 suffix = pp_settings.get("suffix", "processed")
@@ -2170,6 +2577,75 @@ class SyntheticDatasetGenerator():
 
         return graph
     
+
+    def dataset_from_disk(self, folder_path):
+        """
+        Loads graphs from pkl files from folder
+        made for "disk" config
+
+        Args:
+            - folder_path: path to folder where pkl files are stored
+        """
+        folder = Path(folder_path)
+
+        # raise folder errors
+        if not folder.exists():
+            raise FileNotFoundError(f"Folder not found: {folder_path}")
+        if not folder.is_dir():
+            raise NotADirectoryError(f"Folder path is not a directory: {folder_path}")
+        
+        # get both .pkl and .pickle files
+        pkl_files = sorted(list(folder.glob("*.pkl")) + list(folder.glob("*.pickle")))
+
+        # raise file error
+        if len(pkl_files) == 0:
+            raise FileNotFoundError(f"No .pkl/.pickle files found in folder: {folder_path}")
+        
+        # load limit, same as msd if not set in config
+        load_limit = self.settings["source"].get("limit", 100)
+    
+        graphs = []
+        total_loaded_raw = 0
+
+        for pkl_file in pkl_files:
+            with open(pkl_file, "rb") as f:
+                obj = pickle.load(f)
+
+            # since each file can contain multiple graphs, handle both
+            if isinstance(obj, list):
+                raw_graphs = obj
+            else:
+                raw_graphs = [obj]
+
+            total_loaded_raw += len(raw_graphs)
+
+            for graph in raw_graphs:
+                if load_limit is not None and len(graphs) >= load_limit:
+                    break
+
+                # wrap as GW 
+                if isinstance(graph, GraphWrapper):
+                    gw_obj = copy.deepcopy(graph)
+                else:
+                    gw_obj = GraphWrapper(graph_obj=copy.deepcopy(graph))
+
+                disk_mode = self.settings["source"].get("disk_mode", "passthrough")
+
+                if disk_mode == "passthrough":
+                    graphs.append(copy.deepcopy(gw_obj))
+                elif disk_mode == "msd":
+                    graphs.append(self.graph_from_msd(gw_obj))
+                else:
+                    raise NotImplementedError("Disk mode not implemented, choose 'passthrough' or 'msd'")
+
+            if load_limit is not None and len(graphs) >= load_limit:
+                break
+
+        print(f"Loaded {len(graphs)} graphs from folder {folder_path} (Total discovered files: {len(pkl_files)}, with {total_loaded_raw} raw graphs).")
+
+        self.graphs["original"] = graphs
+        return graphs
+
     
     def add_complete_viz_attributes(self):
                 

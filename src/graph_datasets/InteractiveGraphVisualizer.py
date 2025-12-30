@@ -44,8 +44,8 @@ class InteractiveGraphVisualizer:
         self.include_node_ids = False
         self.logger = logger
 
-        self.current_group_type = "R"
-        self.group_colors = {"R": "red", "r": "orange", "W": "brown", "w": "black"}
+        self.current_group_type = "r"
+        self.group_colors = {"r": "red", "o": "orange", "W": "brown", "w": "black"}
         self.active_groups = {}       # group type -> set of selected node IDs (active)
         self.finalized_groups = {}    # group type -> list of finalized groups (each a set)
         self.node_coords = {}         # node id -> 2D coordinate
@@ -74,9 +74,9 @@ class InteractiveGraphVisualizer:
             "room": np.array([0, 0, 2]), 
             "wall": np.array([0, 0, 1]),
             "floor": np.array([0, 0, 3]), 
-            "building": np.array([0, 0, -2]), 
+            "building": np.array([0, 0, 2]), 
             "object": np.array([0, 0, 0.5]),
-            "city": np.array([0, 0, -5])
+            "city": np.array([0, 0, 5])
         }
 
         # colors from SDG generation logic
@@ -345,6 +345,7 @@ class InteractiveGraphVisualizer:
             node_type = attr.get("type", "unknown").lower().strip()
             offset = self.viz_center_offsets.get(node_type, np.array([0,0,0]))
 
+            """
             # fix mature graph visualization
             # if a mature graph is passed, the nodes would visualize at the wrong z position
             if node_type in ["building", "city"]:
@@ -356,6 +357,8 @@ class InteractiveGraphVisualizer:
             else:
                 # get new center from raw data + visual offset
                 center = raw_center + offset
+            """
+            center = raw_center + offset
             
             # update lookups (for interaction)
             self.node_coords[node_id] = center  # essential for update_selection()
@@ -543,12 +546,12 @@ class InteractiveGraphVisualizer:
             "CONTROLS:\n"
             "=========================\n"
             "L-Click    : Select Node\n"
-            "Enter      : Create Room (from Selection)\n"
+            "Shift+R      : Create Room (from Selection)\n"
             "Shift+F   : Create Floor\n"
             "Shift+B  : Create Building\n"
             "Shift+C  : Create City\n"
             "Del         : Delete Selection\n"
-            "Shift+R  : Force Node Position recalculation\n"
+            "Shift+U  : Update Node Positions (force recalculate)\n"
             "Shift+S  : Save Graph\n"
             "=========================\n"
             "w : Working Edges\n"
@@ -847,7 +850,9 @@ class InteractiveGraphVisualizer:
 
         # room center = mean of plane centers
         room_center = self.compute_center_from_nodes(full_graph, plane_ids)
-        room_center[2] = 0.0
+        room_center = np.asarray(room_center, dtype=float)
+        if room_center.shape[0] == 2:
+            room_center = np.append(room_center, 0.0)
 
         offset = self.viz_center_offsets["room"]
         viz_center = room_center + offset
@@ -1016,8 +1021,14 @@ class InteractiveGraphVisualizer:
         final_center = new_center.copy()
 
         # apply offset
-        if node_type in ["building", "city"]:
-            final_center[2] = 0.0
+        if node_type == "building":
+            bn_offset = float(self.viz_center_offsets.get("building", np.array([0,0,2]))[2])
+            max_z = float(np.max([c[2] for c in child_centers]))
+            final_center[2] = max_z + bn_offset
+        elif node_type == "city":
+            cn_offset = float(self.viz_center_offsets.get("city", np.array([0,0,5]))[2])
+            max_z = float(np.max([c[2] for c in child_centers]))
+            final_center[2] = max_z + cn_offset
 
         viz_center = final_center + offset_vec
 
@@ -1130,7 +1141,7 @@ class InteractiveGraphVisualizer:
             if self.logger:
                 self.logger.info(f"Deleted selected node and corresponding edges")
             return
-        if event.key == "R":  # shift + R for reload
+        if event.key == "U":  # shift + u for update
             if self.full_graph:
                 if self.logger:
                     self.logger.info("Recalculating hierarchy positions...")
@@ -1184,7 +1195,7 @@ class InteractiveGraphVisualizer:
             self.current_group_type = event.key
             if self.logger:
                 self.logger.info(f"Current group type set to '{self.current_group_type}'.")
-        elif event.key == "enter":
+        if event.key == "R":  # shift + r to create room from selection
             if (self.current_group_type in self.active_groups and 
                 self.active_groups[self.current_group_type]):
                 if self.current_group_type not in self.finalized_groups:
@@ -1242,6 +1253,27 @@ class InteractiveGraphVisualizer:
             return os.path.join(self.default_save_dir, fname)
         return fname
     
+    def _get_save_path_qt(self, default_dir):
+        try:
+            from PyQt5 import QtWidgets
+            app = QtWidgets.QApplication.instance()
+            if app is None:
+                app = QtWidgets.QApplication([])
+            
+            str_dir = str(default_dir)  # QT expects str
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                None,
+                "Save graph",
+                str_dir,
+                "Pickle files (*.pkl);;All files (*)",
+            )
+            if path:
+                return path
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"Qt file dialog unavailable ({e}); falling back to terminal input.")
+        return None
+    
     def save_graph(self, path=None):
         """
         Cleans the graph of interactive attributes (is_working, flat viz_type, etc.)
@@ -1257,36 +1289,43 @@ class InteractiveGraphVisualizer:
         
         if path is None:
             if self.current_save_path is None:
-                raw_name = ""
-                if self.has_qt and self.QtInputDialog:
-                    text, ok = self.QtInputDialog.getText(None, "Save Graph", "Enter filename: ")
-                    if ok and text:
-                        raw_name = text.strip()
-                else:
-                    print("\n" + "="*40)
+                default_dir = self.default_save_dir or os.getcwd()
+                os.makedirs(default_dir, exist_ok=True)
+
+                save_path = None
+                # Prefer a Qt "Save As" dialog, but dont crash if Qt/app isn't available
+                try:
+                    save_path = self._get_save_path_qt(default_dir)
+                except Exception as e:
+                    if self.logger:
+                        self.logger.warning(f"Qt dialog helper failed ({e}); falling back to terminal input.")
+                    save_path = None
+
+                if save_path is None:
+                    # terminal fallback
+                    print("\n" + "=" * 40)
                     try:
                         raw_name = input(">>> Enter name for this graph\n>>> ").strip()
                     except EOFError:
                         raw_name = "autosave_graph"
 
-                if not raw_name:
-                    raw_name = self._compute_default_save_path()
-                    print(f"No name entered. Defaulting to: {raw_name}")
+                    if not raw_name:
+                        raw_name = self._compute_default_save_path()
+                        print(f"No name entered. Defaulting to: {raw_name}")
 
-                # ensure file name extension
-                if not raw_name.endswith(".pkl"):
-                    raw_name += ".pkl"
+                    if not raw_name.endswith(".pkl"):
+                        raw_name += ".pkl"
 
-                # apply dir
-                if self.default_save_dir is not None:
-                    os.makedirs(self.default_save_dir, exist_ok=True)
-                    self.current_save_path = os.path.join(self.default_save_dir, raw_name)
-                else:
-                    self.current_save_path = raw_name
+                    save_path = os.path.join(default_dir, raw_name)
 
-            # use established path
+                # ensure extension for Qt path too
+                if not save_path.endswith(".pkl"):
+                    save_path += ".pkl"
+
+                self.current_save_path = save_path
+
             path = self.current_save_path
-        
+            
         if self.logger:
             self.logger.info("Cleaning Graph for export...")
 
@@ -1305,27 +1344,43 @@ class InteractiveGraphVisualizer:
                 if self.logger: self.logger.warning(f"Could not convert graph to GW: {e}")
 
         keys_to_clean_node = ["viz_type", "viz_data", "viz_feat", "group_type", "active"]
-        # keys_to_clean_edge = ["working_edge", "viz_feat", "linewidth", "alpha"]
 
         # clean excessive node info
         for nid, attrs in clean_graph.get_attributes_of_all_nodes():
-            if "viz" not in attrs:
-                attrs["viz"] = {}
+            viz = attrs.get("viz", None)
+            if not isinstance(viz, dict):
+                viz = {}
+                attrs["viz"] = viz
 
-            if "center" in attrs and "viz" in attrs:
-                ntype = attrs.get("type")
-                geom_center = np.array(attrs["center"])
+            ntype = (attrs.get("type") or "unknown").lower().strip()
+
+            if "type" not in viz:
+                if "viz_type" in attrs and attrs["viz_type"] is not None:
+                    viz["type"] = attrs["viz_type"]
+                else:
+                    viz["type"] = "Line" if ntype in ["ws", "wall", "door", "window"] else "Point"
+
+            if viz.get("type") == "Line":
+                if "limits" not in viz:
+                    if "limits" in attrs:
+                        viz["limits"] = attrs["limits"]
+                    elif "viz_data" in attrs:
+                        viz["limits"] = attrs["viz_data"]
+                    elif "data" in viz:
+                        pass
+
+            if "center" in attrs:
+                geom_center = np.array(attrs["center"], dtype=float)
                 offset = self.viz_center_offsets.get(ntype, np.array([0,0,0]))
+                viz.setdefault("center", geom_center + offset)
 
-                attrs["viz"]["center"] = geom_center + offset
-                attrs["viz"]["type"] = attrs.get("viz_type", "Point")
-
-                if "feat" not in attrs["viz"] and "viz_feat" in attrs:
-                    attrs["viz"]["feat"] = attrs["viz_feat"]
+            if "feat" not in viz and "viz_feat" in attrs:
+                viz["feat"] = attrs["viz_feat"]
 
             for key in keys_to_clean_node:
                 if key in attrs:
                     del attrs[key]
+            
             
             clean_graph.update_node_attrs(nid, attrs)
 

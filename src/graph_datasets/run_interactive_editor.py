@@ -9,7 +9,8 @@ from graph_wrapper.GraphWrapper import GraphWrapper as GW
 # config
 GRAPH_DATASET_DIR = Path("/home/sven/project/Dataset/Synthetic")
 INTERACTIVE_DATASET_DIR = Path("/home/sven/project/Dataset/Interactive")
-LOAD_INDEX = 4  # index to load specific file
+OUTPUT_DIR = Path("/home/sven/project/situational_graphs_datasets/src/graph_datasets/output_dataset")
+LOAD_INDEX = 0  # index to load specific file
 
 # set logger
 logger = logging.getLogger("vis")
@@ -24,10 +25,12 @@ def load_and_sanitize_graph(idx: int) -> GW:
     Args:
         idx -> Int: Index of pkl file to load
     """
+    selected = OUTPUT_DIR
+
     # find pkl files
-    pkl_files = sorted(GRAPH_DATASET_DIR.glob("*.pkl"))
+    pkl_files = sorted(selected.glob("*.pkl"))
     if not pkl_files:
-        raise FileNotFoundError(f"No .pkl file found in {GRAPH_DATASET_DIR}")
+        raise FileNotFoundError(f"No .pkl file found in {selected}")
     
     print("Available Files: ")
     for i, p in enumerate(pkl_files):
@@ -53,24 +56,14 @@ def load_and_sanitize_graph(idx: int) -> GW:
     else:
         raw_graph_obj = loaded_data
 
-    # re-wrap into GW
-    try:
-        # assuming raw is GW
-        clean_gw = GW(graph_obj=raw_graph_obj.graph)
-        print(f"Graph loaded successfully. Nodes: {clean_gw.get_total_number_nodes()}")
-        return clean_gw
-    except AttributeError:
-        # fallback if raw is not GW
-        clean_gw = GW(graph_obj=raw_graph_obj)
-        return clean_gw
-    
+    return raw_graph_obj  # type: ignore
 
 def main():
     # load 
     graph = load_and_sanitize_graph(LOAD_INDEX)
 
     # debug
-    print(f"Node Types in Graph: {graph.get_all_node_types()}")
+    # print(f"Node Types in Graph: {graph.get_all_node_types()}")
 
     # prep queue
     grp_q = queue.Queue()
