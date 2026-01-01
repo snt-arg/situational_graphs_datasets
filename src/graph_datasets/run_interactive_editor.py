@@ -7,8 +7,8 @@ from graph_datasets.InteractiveGraphVisualizer import InteractiveGraphVisualizer
 from graph_wrapper.GraphWrapper import GraphWrapper as GW
 
 # config
-GRAPH_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/viz").expanduser()
 INTERACTIVE_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/viz").expanduser()
+OUTPUT_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/viz").expanduser()
 LOAD_INDEX = 0  # index to load specific file
 
 # set logger
@@ -24,10 +24,12 @@ def load_and_sanitize_graph(idx: int) -> GW:
     Args:
         idx -> Int: Index of pkl file to load
     """
+    selected = OUTPUT_DIR
+
     # find pkl files
-    pkl_files = sorted(GRAPH_DATASET_DIR.glob("*.pkl"))
+    pkl_files = sorted(selected.glob("*.pkl"))
     if not pkl_files:
-        raise FileNotFoundError(f"No .pkl file found in {GRAPH_DATASET_DIR}")
+        raise FileNotFoundError(f"No .pkl file found in {selected}")
     
     print("Available Files: ")
     for i, p in enumerate(pkl_files):
@@ -70,7 +72,7 @@ def main():
     graph = load_and_sanitize_graph(LOAD_INDEX)
 
     # debug
-    print(f"Node Types in Graph: {graph.get_all_node_types()}")
+    # print(f"Node Types in Graph: {graph.get_all_node_types()}")
 
     # prep queue
     grp_q = queue.Queue()

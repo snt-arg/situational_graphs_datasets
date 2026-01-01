@@ -1,15 +1,14 @@
-from SyntheticDatasetGenerator import SyntheticDatasetGenerator
-from graph_visualizer import visualize_nxgraph, visualize_nxgraph_3d
+from graph_datasets.SyntheticDatasetGenerator import SyntheticDatasetGenerator
+from graph_datasets.graph_visualizer import visualize_nxgraph, visualize_nxgraph_3d
 import matplotlib.pyplot as plt
 import json, os, time, sys
 import networkx as nx
 from graph_wrapper.GraphWrapper import GraphWrapper
 
-
 from graph_datasets.config import get_config as get_datasets_config
 
-dataset = "msd"
-viz_lim = 3  # limit for visualizations (specifically for msd)
+dataset = "synthetic"  # synthetic, msd, or disk
+viz_lim = 3  # limit for visualizations (specifically for msd & disk)
 
 if dataset == "synthetic":
     synteticdataset_settings = get_datasets_config("ifh")
@@ -33,6 +32,20 @@ elif dataset == "msd":
 
     all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
     print(f"dbg len(all_dataset) {len(all_dataset)}")
+
+elif dataset == "disk":
+    synteticdataset_settings = get_datasets_config("disk")
+    dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
+
+    visualized_graphs = dataset_generator.graphs["original"][:viz_lim]  # same as msd, only visualize subset of full data pool
+    extended_nxdatset = dataset_generator.extend_nxdataset(visualized_graphs, "training", "final")
+
+    all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
+    print(f"dbg len(all_dataset) {len(all_dataset)}")
+
+    if len(all_dataset) == 0:
+        print("all_datasets is empty, visualizing input graph")
+        all_dataset = visualized_graphs
 
 for graph in all_dataset:
     # node_types = graph.get_all_node_types()
