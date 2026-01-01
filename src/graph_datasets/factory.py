@@ -6,16 +6,16 @@ import networkx as nx
 from graph_wrapper.GraphWrapper import GraphWrapper
 import pickle
 import numpy as np
-
+import joblib
 
 from graph_datasets.config import get_config as get_datasets_config
 
-dataset_base = "custom_pickle"  # "synthetic" or "msd"
-config_name = "ifh/msd"  # name of the config file in graph_datasets/config
+dataset_base = "synthetic"  # "synthetic" or "msd" or "custom_pickle"
+config_name = "ifh/ssg_manh_small_buildings_op"  # name of the config file in graph_datasets/config
 extension_name = "original"  # "original" or "noise"
-pickle_name = "ifh/msd_buildings_3467.pkl"
+pickle_name = "ifh/viz.pkl"
 n_graphs_reduction = 3
-save_pickle = False
+save_pickle = True
 visualize = True
 
 save_pickle_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/"
@@ -33,6 +33,7 @@ if dataset_base == "synthetic":
     # extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs["original"], "training", "training")
 
     all_dataset = extended_nxdatset["train"] + extended_nxdatset["test"] +extended_nxdatset["val"]
+    all_dataset = [g[0] for g in all_dataset]
 
 elif dataset_base == "msd":
     synteticdataset_settings = get_datasets_config(config_name)
@@ -45,22 +46,9 @@ elif dataset_base == "msd":
     all_dataset = [g[0] for g in all_dataset]
 
 elif dataset_base == "custom_pickle":
-    import joblib
-
-    # # Load the pickle file with joblib
-    # data = joblib.load('/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0planes_graphs.pkl')
-
-    # # Save the data again with joblib
-    # all_dataset = joblib.dump(data, '/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0planes_graphs_newversion.pkl')
-    with open("/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0/planes_graphs.pkl", 'rb') as f:
-            all_dataset = pickle.load(f)
-            f.close()
-    # with open('/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0planes_graphs.pkl', 'rb') as f:
-    #     all_dataset = pickle.load(f, encoding='bytes')
-    #     f.close()
-    # import dill
-    # with open('/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0/planes_graphs.pkl', 'rb') as f:
-    #     data = dill.load(f)
+    synteticdataset_settings = get_datasets_config(config_name)
+    dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
+    all_dataset = [joblib.load('/home/adminpc/dockers/s_graphs_jazzy/workspace/plane_graphs/multi_building/test/0/planes_graphs/merge_graph.joblib')]
 
 if visualize:
     for graph in all_dataset:

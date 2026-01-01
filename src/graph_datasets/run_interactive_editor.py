@@ -7,9 +7,9 @@ from graph_datasets.InteractiveGraphVisualizer import InteractiveGraphVisualizer
 from graph_wrapper.GraphWrapper import GraphWrapper as GW
 
 # config
-GRAPH_DATASET_DIR = Path("/home/sven/project/Dataset/Synthetic")
-INTERACTIVE_DATASET_DIR = Path("/home/sven/project/Dataset/Interactive")
-LOAD_INDEX = 4  # index to load specific file
+GRAPH_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/viz").expanduser()
+INTERACTIVE_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/viz").expanduser()
+LOAD_INDEX = 0  # index to load specific file
 
 # set logger
 logger = logging.getLogger("vis")
@@ -57,8 +57,8 @@ def load_and_sanitize_graph(idx: int) -> GW:
     try:
         # assuming raw is GW
         clean_gw = GW(graph_obj=raw_graph_obj.graph)
-        print(f"Graph loaded successfully. Nodes: {clean_gw.get_total_number_nodes()}")
-        return clean_gw
+        print(f"Graph loaded successfully. Nodes: {raw_graph_obj.get_total_number_nodes()}")
+        return raw_graph_obj
     except AttributeError:
         # fallback if raw is not GW
         clean_gw = GW(graph_obj=raw_graph_obj)

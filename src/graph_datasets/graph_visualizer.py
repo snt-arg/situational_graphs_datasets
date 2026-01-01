@@ -71,7 +71,7 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids
         plt.close(fig)
     return fig
 
-def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None, blocking=False):
+def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None, blocking=False, hide_axes=True):
     nodes_data = graph.get_attributes_of_all_nodes()
     node_attr_dict = {nd[0]: nd[1] for nd in nodes_data}
     fig = plt.figure(image_name)
@@ -143,7 +143,34 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
         if "pred" in edge_data[2]:
             center = (points[0] + points[1]) / 2
             ax.text(center[0], center[1], center[2], "{:.2f}".format(edge_data[2]['pred']), fontsize=9)
+    
     ax.set_box_aspect([1,1,1])
+
+    # Hide axes and grid if requested
+    if hide_axes:
+        ax.grid(False)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_zticks([])
+        ax.set_xlabel('')
+        ax.set_ylabel('')
+        ax.set_zlabel('')
+        ax.xaxis.pane.fill = False
+        ax.yaxis.pane.fill = False
+        ax.zaxis.pane.fill = False
+        ax.xaxis.pane.set_edgecolor('none')
+        ax.yaxis.pane.set_edgecolor('none')
+        ax.zaxis.pane.set_edgecolor('none')
+        ax.xaxis.set_visible(False)
+        ax.yaxis.set_visible(False)
+        ax.zaxis.set_visible(False)
+        # Hide the 3D box outline completely
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        # Hide 3D frame lines
+        ax.w_xaxis.line.set_visible(False)
+        ax.w_yaxis.line.set_visible(False)
+        ax.w_zaxis.line.set_visible(False)
 
     # Calculate the bounds including all elements
     x_coords = []
@@ -205,10 +232,20 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
         y_min, y_max = get_padded_range(y_coords)
         z_min, z_max = get_padded_range(z_coords)
         
-        # Set the limits independently for each dimension
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_zlim(z_min, z_max)
+        # Find the maximum range across all dimensions
+        x_range = x_max - x_min
+        y_range = y_max - y_min
+        z_range = z_max - z_min
+        max_range = max(x_range, y_range, z_range)
+        
+        # Center each axis and apply the maximum range
+        x_center = (x_min + x_max) / 2
+        y_center = (y_min + y_max) / 2
+        z_center = (z_min + z_max) / 2
+        
+        ax.set_xlim(x_center - max_range/2, x_center + max_range/2)
+        ax.set_ylim(y_center - max_range/2, y_center + max_range/2)
+        ax.set_zlim(z_center - max_range/2, z_center + max_range/2)
 
     ax.legend()
 

@@ -837,7 +837,7 @@ class SyntheticDatasetGenerator():
             # base building bbox
             base_bbox = new_builidng.get_bounding_box()
 
-            story_height = 5  # must match add_stories()
+            story_height = 3  # must match add_stories()
             for k in range(1, target_stories):
                 if source_type == "msd":
                     # for msd additional floors are duplicates of the base
@@ -885,7 +885,7 @@ class SyntheticDatasetGenerator():
                 placed_bboxes=placed_bboxes,             # already placed ones
                 area_shape=effective_area_shape,
                 area_radius=effective_area_radius,
-                safety_dist=5.0,                         # min spacing between buildings
+                safety_dist=2.0,                         # min spacing between buildings
                 max_tries=300
             )
 
