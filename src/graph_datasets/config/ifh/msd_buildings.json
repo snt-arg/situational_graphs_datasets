@@ -49,12 +49,11 @@
                     "floor"
                 ]
             ]},
+            {"pp_name": "add_stories", "add_floor_nodes": true,"n_stories": 3},
+            {"pp_name": "add_buildings", "n_buildings": 2, "area_shape": "circular", "area_radius": 20.0},
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
             {"pp_name": "add_local_noise", "rotation": 0.0, "translation":0.0, "entities": ["ws", "wall","room", "floor"]},
             {"pp_name": "dropout", "room": 0.0, "wall": 0.0,"ws":0.0, "propagate": false, "remove_lower": false},
-            {"pp_name": "add_floor_node"},
-            {"pp_name": "add_stories", "add_floor_nodes": true,"n_stories": 3},
-            {"pp_name": "add_buildings", "n_buildings": 2, "area_shape": "circular", "area_radius": 30.0},
             {"pp_name": "merge_edge_types", "common_type":"common"},
             {"pp_name": "to_undirected"}
         ],

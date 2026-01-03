@@ -13,6 +13,7 @@ from torch_geometric.data import Data
 import torch
 from shapely.geometry import Polygon, Point
 from collections import defaultdict, Counter
+from typing import Optional
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -139,7 +140,7 @@ class SyntheticDatasetGenerator():
         }
 
         self.viz_center_offsets = {"ws": np.array([0, 0, 0]), "room": np.array([0, 0, 2]), "wall": np.array([0, 0, 1]),\
-                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, 3]), "object": np.array([0, 0, 0.5]), "city": np.array([0, 0, 5])}
+                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, 3]), "object": np.array([0, 0, 0.5]), "city": np.array([0, 0, 4])}
                 
 
     def normalize_features(self, type, feats):
@@ -478,7 +479,7 @@ class SyntheticDatasetGenerator():
         return graph
     
     def add_stories(self, graph, n_floors = None, add_floor_nodes = False):
-        story_height = 3
+        story_height = 4
         initial_graph = copy.deepcopy(graph)
         working_graph = copy.deepcopy(graph)
         n_floors = random.randint(1, n_floors)
@@ -885,7 +886,7 @@ class SyntheticDatasetGenerator():
             # base building bbox
             base_bbox = new_builidng.get_bounding_box()
 
-            story_height = 3  # must match add_stories()
+            story_height = 4  # must match add_stories()
             for k in range(1, target_stories):
                 if source_type == "msd":
                     # for msd additional floors are duplicates of the base
@@ -1180,7 +1181,7 @@ class SyntheticDatasetGenerator():
         for edge_attributes in edges_attributes:
             source_node_id, target_node_id, edge_attrs = edge_attributes
             if edge_attrs["type"] != common_edge_type:
-                new_graph.update_edge_attrs((source_node_id, target_node_id), {"type": common_edge_type, "viz_feat" : "grey", "label": 0})
+                new_graph.update_edge_attrs((source_node_id, target_node_id), {"type": common_edge_type, "viz_feat" : "a", "label": 0})
 
         return new_graph
             
@@ -1376,8 +1377,8 @@ class SyntheticDatasetGenerator():
     def deconstruct_graph_room_by_room(
             self,
             graph: GraphWrapper,
-            save_dir: str | None = None,
-            seed: int | None = None,
+            save_dir: Optional[str] = None,
+            seed: Optional[int] = None,
             include_init: bool = True,
             return_sequence: bool = False,
             save_filename: str = "deconstruction_sequence.pkl",
@@ -2071,8 +2072,8 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "incremental_observations":
                 working_graph = self.include_observations(working_graph, pp_settings)
 
-            # elif pp_settings["pp_name"] == "update_viz":
-            #    working_graph._add_complete_viz_attributes_to_graph(self.viz_center_offsets, self.node_viz_feat_mapping)
+            elif pp_settings["pp_name"] == "update_viz":
+               working_graph._add_complete_viz_attributes_to_graph(self.viz_center_offsets, self.node_viz_feat_mapping)
 
             elif pp_settings["pp_name"] == "recalculate_positions":
                 working_graph.recalculate_hierarchy_centers()

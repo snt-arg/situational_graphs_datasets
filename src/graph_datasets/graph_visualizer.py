@@ -360,7 +360,9 @@ def _mpl_color_from_feat(viz_feat):
             'm': 'magenta',
             'y': 'yellow',
             'o': 'orange',
-            'p': 'purple'
+            'p': 'purple',
+            'a': 'gray'
+
         }
         c = viz_feat[0]
         return color_dict.get(c, c)

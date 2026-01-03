@@ -11,11 +11,11 @@ import joblib
 from graph_datasets.config import get_config as get_datasets_config
 
 dataset_base = "synthetic"  # "synthetic" or "msd" or "custom_pickle"
-config_name = "ifh/ssg_manh_small_buildings_op"  # name of the config file in graph_datasets/config
+config_name = "ifh/ssg_manh_small_buildings"  # name of the config file in graph_datasets/config
 extension_name = "original"  # "original" or "noise"
 pickle_name = "ifh/viz.pkl"
-n_graphs_reduction = 3
-save_pickle = True
+n_graphs_reduction = 5
+save_pickle = False
 visualize = True
 
 save_pickle_path = "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/"
@@ -37,6 +37,9 @@ if dataset_base == "synthetic":
 
 elif dataset_base == "msd":
     synteticdataset_settings = get_datasets_config(config_name)
+    if n_graphs_reduction is not None:
+        synteticdataset_settings["source"]["limit"] = n_graphs_reduction
+    
     dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
     # dataset_generator.create_dataset()
     extended_nxdatset = dataset_generator.extend_nxdataset(dataset_generator.graphs[extension_name], "training", "training")
