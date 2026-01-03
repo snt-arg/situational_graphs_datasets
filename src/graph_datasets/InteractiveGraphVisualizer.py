@@ -555,8 +555,6 @@ class InteractiveGraphVisualizer:
             "Shift+S  : Save Graph\n"
             "=========================\n"
             "w : Working Edges\n"
-            "m : WS Nodes (Planes)\n"
-            "c : Debug Centers\n"
             "z : Toggle Z-Filter\n"
             "h : Toggle Control Display"
         )

@@ -445,6 +445,32 @@ class SyntheticDatasetGenerator():
         return graph   
     
     def add_building_node(self, graph):
+        # dont create building node if it already exists:
+        existing_buildings = list(graph.filter_graph_by_node_types(["building"]).get_nodes_ids())
+        if existing_buildings:
+            floors_attrs = graph.filter_graph_by_node_attributes({"type" : "floor"}).get_attributes_of_all_nodes()
+            if floors_attrs:
+                floor_centers = np.array([attr[1]["center"] for attr in floors_attrs])
+                avg_xy = floor_centers[:, :2].mean(axis=0)  
+                max_z = floor_centers[:, 2].max()
+                bn_offset = 2.0
+                building_center = np.array([avg_xy[0], avg_xy[1], max_z + bn_offset])
+
+                bid = existing_buildings[0]
+                b_attrs = graph.get_attributes_of_node(bid)
+                b_attrs["center"] = building_center
+                b_attrs["x"] = building_center
+
+                viz = b_attrs.get("viz", {})
+                if isinstance(viz, dict):
+                    viz_building_center = building_center + self.viz_center_offsets["building"]
+                    viz["center"] = viz_building_center
+                    b_attrs["viz"] = viz
+
+                graph.update_node_attrs(bid, b_attrs)
+
+            return graph
+
         floors_attrs = graph.filter_graph_by_node_attributes({"type" : "floor"}).get_attributes_of_all_nodes()
 
         # Fallback: Handle no floor node existing
@@ -481,13 +507,16 @@ class SyntheticDatasetGenerator():
     def add_stories(self, graph, n_floors = None, add_floor_nodes = False):
         story_height = 4
         initial_graph = copy.deepcopy(graph)
-        working_graph = copy.deepcopy(graph)
-        n_floors = random.randint(1, n_floors)
+
+        if add_floor_nodes:
+            initial_graph = self.add_floor_node(initial_graph)
+
+        working_graph = copy.deepcopy(initial_graph)
         for n_floor in range(n_floors - 1):
             new_graph = copy.deepcopy(initial_graph)
 
-            if add_floor_nodes:
-                new_graph = self.add_floor_node(new_graph)
+            #if add_floor_nodes:
+            #    new_graph = self.add_floor_node(new_graph)
 
             current_story_height = story_height * (n_floor + 1)
             new_graph.translate_geometries(np.array([0,0,current_story_height]))
