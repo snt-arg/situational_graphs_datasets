@@ -503,26 +503,130 @@ class SyntheticDatasetGenerator():
              
         return graph
     
-    def add_stories(self, graph, n_floors = None, add_floor_nodes = False):
-        story_height = 3
+    # additional story helpers
+    def _fit_floor_to_base_bbox(self, floor_gw, base_bbox):
+        """
+        Uniformly scale + align the floor so its XY AABB fits inside the base floor AABB.
+        Never scale up above 1.0 (floors can be smaller, not larger).
+        TODO: if time, make floors able to be larger than base to a certain threshold
+        """
+
+        def _bbox_xy(bbox):
+            (minx, miny, *_), (maxx, maxy, *_) = bbox
+            return float(minx), float(miny), float(maxx), float(maxy)
+
+        def _uniform_scale_xy_about(gw, scale, about_xy):
+            """Uniformly scale all node geometries in XY about a given pivot."""
+            if abs(scale - 1.0) < 1e-9:
+                return
+            about_xy = np.asarray(about_xy[:2], dtype=float)
+
+            def _scale_pt(p):
+                p = np.asarray(p, dtype=float)
+                if p.shape[0] == 2:
+                    xy, z = p, 0.0
+                else:
+                    xy, z = p[:2], p[2]
+                xy = (xy - about_xy) * scale + about_xy
+                return np.array([xy[0], xy[1], z], dtype=float)
+
+            for nid, attrs in gw.get_attributes_of_all_nodes():
+                viz = attrs.get("viz", {})
+
+                if "center" in attrs:
+                    attrs["center"] = _scale_pt(attrs["center"])
+                if "center" in viz:
+                    viz["center"] = _scale_pt(viz["center"])
+                    attrs["viz"] = viz
+
+                if "limits" in attrs and isinstance(attrs["limits"], (list, tuple)) and len(attrs["limits"]) == 2:
+                    a, b = attrs["limits"]
+                    attrs["limits"] = [_scale_pt(a), _scale_pt(b)]
+                if "limits" in viz and isinstance(viz["limits"], (list, tuple)) and len(viz["limits"]) == 2:
+                    a, b = viz["limits"]
+                    viz["limits"] = [_scale_pt(a), _scale_pt(b)]
+                    attrs["viz"] = viz
+
+        def _translate_xy(gw, delta_xy):
+            """Translate all node geometries in XY by delta_xy."""
+            delta_xy = np.asarray(delta_xy[:2], dtype=float)
+
+            def _shift_pt(p):
+                p = np.asarray(p, dtype=float)
+                if p.shape[0] == 2:
+                    xy, z = p, 0.0
+                else:
+                    xy, z = p[:2], p[2]
+                xy = xy + delta_xy
+                return np.array([xy[0], xy[1], z], dtype=float)
+
+            for nid, attrs in gw.get_attributes_of_all_nodes():
+                viz = attrs.get("viz", {})
+
+                if "center" in attrs:
+                    attrs["center"] = _shift_pt(attrs["center"])
+                if "center" in viz:
+                    viz["center"] = _shift_pt(viz["center"])
+                    attrs["viz"] = viz
+
+                if "limits" in attrs and isinstance(attrs["limits"], (list, tuple)) and len(attrs["limits"]) == 2:
+                    a, b = attrs["limits"]
+                    attrs["limits"] = [_shift_pt(a), _shift_pt(b)]
+                if "limits" in viz and isinstance(viz["limits"], (list, tuple)) and len(viz["limits"]) == 2:
+                    a, b = viz["limits"]
+                    viz["limits"] = [_shift_pt(a), _shift_pt(b)]
+                    attrs["viz"] = viz
+
+        # target (base) box
+        bminx, bminy, bmaxx, bmaxy = _bbox_xy(base_bbox)
+        tw, th = max(1e-9, bmaxx - bminx), max(1e-9, bmaxy - bminy)
+        tcenter = np.array([(bminx + bmaxx) / 2.0, (bminy + bmaxy) / 2.0], dtype=float)
+
+        # source (floor) box
+        fminx, fminy, fmaxx, fmaxy = _bbox_xy(floor_gw.get_bounding_box())
+        fw, fh = max(1e-9, fmaxx - fminx), max(1e-9, fmaxy - fminy)
+        fcenter = np.array([(fminx + fmaxx) / 2.0, (fminy + fmaxy) / 2.0], dtype=float)
+
+        # scale: fit inside target, but do not enlarge above 1.0
+        s_fit = min(tw / fw, th / fh)
+        s = min(1.0, s_fit)
+        _uniform_scale_xy_about(floor_gw, s, about_xy=fcenter)
+
+        # re-center to target center
+        _translate_xy(floor_gw, (tcenter - fcenter))
+    
+    def add_stories(self, graph, n_floors = None, add_floor_nodes = False, randomize_floors = True):
+        story_height = 5
         initial_graph = copy.deepcopy(graph)
 
         if add_floor_nodes:
             initial_graph = self.add_floor_node(initial_graph)
 
         working_graph = copy.deepcopy(initial_graph)
-        for n_floor in range(n_floors - 1):
-            new_graph = copy.deepcopy(initial_graph)
 
-            #if add_floor_nodes:
-            #    new_graph = self.add_floor_node(new_graph)
+        # get base footprint so additional floors stay within range
+        base_bbox = initial_graph.get_bounding_box()
 
+        for n_floor in range(n_floors - 1):  # type: ignore
             current_story_height = story_height * (n_floor + 1)
+
+            if randomize_floors:
+                fm = self.generate_base_matrix()
+                new_graph = self.generate_graph_from_base_matrix(base_matrix=fm, add_noise=False)
+
+                if add_floor_nodes:
+                    new_graph = self.add_floor_node(new_graph)
+
+                self._fit_floor_to_base_bbox(new_graph, base_bbox)
+            else:
+                # original cloning behaviour
+                new_graph = copy.deepcopy(initial_graph)
+
             new_graph.translate_geometries(np.array([0,0,current_story_height]))
 
             id_offset = max(working_graph.get_nodes_ids()) + 1
             id_mapping = {o: i + id_offset for i, o in enumerate(new_graph.get_nodes_ids())}
-            new_graph.relabel_nodes(mapping=id_mapping, copy=False)
+            new_graph.relabel_nodes(mapping=id_mapping, copy=False)  # type: ignore
             # print(f"dbg graph {graph.get_nodes_ids()}")
             # print(f"dbg id_mapping {id_mapping}")
             working_graph = working_graph.merge_graph(new_graph)
@@ -592,98 +696,6 @@ class SyntheticDatasetGenerator():
 
             # propagate and return array with random story distributions 
             return[random.randint(1, max_n) for _ in range(n_extra)]
-
-        # additional story helpers
-        def _bbox_xy(bbox):
-            (minx, miny, *_), (maxx, maxy, *_) = bbox
-            return float(minx), float(miny), float(maxx), float(maxy)
-
-        def _uniform_scale_xy_about(gw, scale, about_xy):
-            """Uniformly scale all node geometries in XY about a given pivot."""
-            if abs(scale - 1.0) < 1e-9:
-                return
-            about_xy = np.asarray(about_xy[:2], dtype=float)
-
-            def _scale_pt(p):
-                p = np.asarray(p, dtype=float)
-                if p.shape[0] == 2:
-                    xy, z = p, 0.0
-                else:
-                    xy, z = p[:2], p[2]
-                xy = (xy - about_xy) * scale + about_xy
-                return np.array([xy[0], xy[1], z], dtype=float)
-
-            for nid, attrs in gw.get_attributes_of_all_nodes():
-                viz = attrs.get("viz", {})
-
-                if "center" in attrs:
-                    attrs["center"] = _scale_pt(attrs["center"])
-                if "center" in viz:
-                    viz["center"] = _scale_pt(viz["center"])
-                    attrs["viz"] = viz
-
-                if "limits" in attrs and isinstance(attrs["limits"], (list, tuple)) and len(attrs["limits"]) == 2:
-                    a, b = attrs["limits"]
-                    attrs["limits"] = [_scale_pt(a), _scale_pt(b)]
-                if "limits" in viz and isinstance(viz["limits"], (list, tuple)) and len(viz["limits"]) == 2:
-                    a, b = viz["limits"]
-                    viz["limits"] = [_scale_pt(a), _scale_pt(b)]
-                    attrs["viz"] = viz
-
-        def _translate_xy(gw, delta_xy):
-            """Translate all node geometries in XY by delta_xy."""
-            delta_xy = np.asarray(delta_xy[:2], dtype=float)
-
-            def _shift_pt(p):
-                p = np.asarray(p, dtype=float)
-                if p.shape[0] == 2:
-                    xy, z = p, 0.0
-                else:
-                    xy, z = p[:2], p[2]
-                xy = xy + delta_xy
-                return np.array([xy[0], xy[1], z], dtype=float)
-
-            for nid, attrs in gw.get_attributes_of_all_nodes():
-                viz = attrs.get("viz", {})
-
-                if "center" in attrs:
-                    attrs["center"] = _shift_pt(attrs["center"])
-                if "center" in viz:
-                    viz["center"] = _shift_pt(viz["center"])
-                    attrs["viz"] = viz
-
-                if "limits" in attrs and isinstance(attrs["limits"], (list, tuple)) and len(attrs["limits"]) == 2:
-                    a, b = attrs["limits"]
-                    attrs["limits"] = [_shift_pt(a), _shift_pt(b)]
-                if "limits" in viz and isinstance(viz["limits"], (list, tuple)) and len(viz["limits"]) == 2:
-                    a, b = viz["limits"]
-                    viz["limits"] = [_shift_pt(a), _shift_pt(b)]
-                    attrs["viz"] = viz
-
-        def _fit_floor_to_base_bbox(floor_gw, base_bbox):
-            """
-            Uniformly scale + align the floor so its XY AABB fits inside the base floor AABB.
-            Never scale up above 1.0 (floors can be smaller, not larger).
-            TODO: if time, make floors able to be larger than base to a certain threshold
-            """
-            # target (base) box
-            bminx, bminy, bmaxx, bmaxy = _bbox_xy(base_bbox)
-            tw, th = max(1e-9, bmaxx - bminx), max(1e-9, bmaxy - bminy)
-            tcenter = np.array([(bminx + bmaxx) / 2.0, (bminy + bmaxy) / 2.0], dtype=float)
-
-            # source (floor) box
-            fminx, fminy, fmaxx, fmaxy = _bbox_xy(floor_gw.get_bounding_box())
-            fw, fh = max(1e-9, fmaxx - fminx), max(1e-9, fmaxy - fminy)
-            fcenter = np.array([(fminx + fmaxx) / 2.0, (fminy + fmaxy) / 2.0], dtype=float)
-
-            # scale: fit inside target, but do not enlarge above 1.0
-            s_fit = min(tw / fw, th / fh)
-            s = min(1.0, s_fit)
-            _uniform_scale_xy_about(floor_gw, s, about_xy=fcenter)
-
-            # re-center to target center
-            _translate_xy(floor_gw, (tcenter - fcenter))
-
 
         # rotation helper functions 
         def _building_pivot(graph):
@@ -914,7 +926,7 @@ class SyntheticDatasetGenerator():
             # base building bbox
             base_bbox = new_builidng.get_bounding_box()
 
-            story_height = 5  # must match add_stories()
+            story_height = 5  # should match add_stories()
             for k in range(1, target_stories):
                 if source_type == "msd":
                     # for msd additional floors are duplicates of the base
@@ -926,7 +938,7 @@ class SyntheticDatasetGenerator():
                     floor_k = self.add_floor_node(floor_k)
 
                     # fit floor to base floor (never larger)
-                    _fit_floor_to_base_bbox(floor_k, base_bbox)
+                    self._fit_floor_to_base_bbox(floor_k, base_bbox)
 
                 # stack at height k
                 floor_k.translate_geometries(np.array([0.0, 0.0, story_height * k],dtype=float))
