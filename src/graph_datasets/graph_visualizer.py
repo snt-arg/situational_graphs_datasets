@@ -61,7 +61,7 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids
     ax.set_aspect('equal', adjustable='datalim')
     # ax.autoscale()
 
-    # plt.tight_layout()
+    plt.tight_layout()
     if visualize_alone:
         # ax.draw()
         # ax.pause(0.001)

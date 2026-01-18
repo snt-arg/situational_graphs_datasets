@@ -2,7 +2,8 @@
     "source" : {
         "type": "msd",
         "pickle_path": "/home/adminpc/workspaces/reasoning_ws/src/msd/data/msd_from_notebook_all.pickle",
-        "limit": 99999
+        "limit": 3467,
+        "max_nodes": 135
     },
     "noise":{
         "global":{
@@ -50,12 +51,10 @@
                 ]
             ]},
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
+            {"pp_name": "add_stories", "add_floor_nodes": true, "n_stories": 2},
             {"pp_name": "add_local_noise", "rotation": 0.0, "translation":0.0, "entities": ["ws", "wall","room", "floor"]},
             {"pp_name": "dropout", "room": 0.0, "wall": 0.0,"ws":0.0, "propagate": false, "remove_lower": false},
-            {"pp_name": "add_floor_node"},
-            {"pp_name": "add_stories", "add_floor_nodes": true,"n_stories": 5},
             {"pp_name": "merge_edge_types", "common_type":"common"},
-            {"pp_name": "update_viz"},
             {"pp_name": "to_undirected"}
         ],
         "final": [

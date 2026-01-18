@@ -133,14 +133,14 @@ class SyntheticDatasetGenerator():
         self.node_viz_feat_mapping = {
             'ws': "black",
             'room': 'ro',
-            'wall': 'mo',
+            'wall': 'oo',
             'floor': 'go',
             'building': 'co',
             'wall_ws': 'yo'
         }
 
         self.viz_center_offsets = {"ws": np.array([0, 0, 0]), "room": np.array([0, 0, 2]), "wall": np.array([0, 0, 1]),\
-                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, 3]), "object": np.array([0, 0, 0.5]), "city": np.array([0, 0, 4])}
+                                   "floor": np.array([0, 0, 3]), "building": np.array([0, 0, 2]), "object": np.array([0, 0, 0.5]), "city": np.array([0, 0, 4])}
                 
 
     def normalize_features(self, type, feats):
@@ -359,7 +359,7 @@ class SyntheticDatasetGenerator():
                             node_ID = max(graph.get_nodes_ids(), default=-1) + 1
 
                             wall_viz = copy.deepcopy(viz_data_base)
-                            wall_viz.update({"type": "Point", "feat": "mo", "limit" : [ws_limit_1,ws_limit_2],"center": viz_wall_center})
+                            wall_viz.update({"type": "Point", "feat": "oo", "limit" : [ws_limit_1,ws_limit_2],"center": viz_wall_center})
 
                             graph.add_nodes([(node_ID,{"type" : "wall", "x" : wall_center, "center" : wall_center, "viz" : wall_viz})])
                             graph.add_edges([(current_room_neigh_ws_id, node_ID, {"type": "ws_belongs_wall", "x": [], "viz_feat": "m", "linewidth":1.0, "alpha":0.5}),\
@@ -505,7 +505,7 @@ class SyntheticDatasetGenerator():
         return graph
     
     def add_stories(self, graph, n_floors = None, add_floor_nodes = False):
-        story_height = 4
+        story_height = 3
         initial_graph = copy.deepcopy(graph)
 
         if add_floor_nodes:
@@ -915,7 +915,7 @@ class SyntheticDatasetGenerator():
             # base building bbox
             base_bbox = new_builidng.get_bounding_box()
 
-            story_height = 4  # must match add_stories()
+            story_height = 3  # must match add_stories()
             for k in range(1, target_stories):
                 if source_type == "msd":
                     # for msd additional floors are duplicates of the base
@@ -2515,9 +2515,9 @@ class SyntheticDatasetGenerator():
         msd_limit = self.settings["source"].get("limit", len(raw_msd_graphs))
 
         graphs = []
-        for msd_graph in tqdm.tqdm(raw_msd_graphs[:msd_limit], desc="Processing MSD graphs", colour="red"):
-
-            graphs.append(self.graph_from_msd(GraphWrapper(graph_obj = copy.deepcopy(msd_graph))))
+        for graph in tqdm.tqdm(raw_msd_graphs[:msd_limit], desc="Processing MSD graphs", colour="red"):
+            if graph.number_of_nodes() <= self.settings["source"].get("max_nodes", 9999):
+                graphs.append(self.graph_from_msd(GraphWrapper(graph_obj = copy.deepcopy(graph))))
 
         self.graphs["original"] = graphs
 
@@ -2612,31 +2612,38 @@ class SyntheticDatasetGenerator():
         return graph
     
 
-    def dataset_from_disk(self, folder_path):
+    def dataset_from_disk(self, path):
         """
         Loads graphs from pkl files from folder
         made for "disk" config
 
         Args:
-            - folder_path: path to folder where pkl files are stored
+            - path: path to folder where pkl files are stored
         """
-        folder = Path(folder_path)
 
-        # raise folder errors
-        if not folder.exists():
-            raise FileNotFoundError(f"Folder not found: {folder_path}")
-        if not folder.is_dir():
-            raise NotADirectoryError(f"Folder path is not a directory: {folder_path}")
-        
-        # get both .pkl and .pickle files
-        pkl_files = sorted(list(folder.glob("*.pkl")) + list(folder.glob("*.pickle")))
+        if path[-4:] == ".pkl" or path[-7:] == ".pickle":
+            print("Pickle file path provided, loading single file instead of folder.")
+            pkl_files = [Path(path)]
 
-        # raise file error
-        if len(pkl_files) == 0:
-            raise FileNotFoundError(f"No .pkl/.pickle files found in folder: {folder_path}")
-        
+        else:
+            folder = Path(path)
+
+            # raise folder errors
+            if not folder.exists():
+                raise FileNotFoundError(f"Folder not found: {path}")
+            if not folder.is_dir():
+                raise NotADirectoryError(f"Folder path is not a directory: {path}")
+            
+            # get both .pkl and .pickle files
+            pkl_files = sorted(list(folder.glob("*.pkl")) + list(folder.glob("*.pickle")))
+
+            # raise file error
+            if len(pkl_files) == 0:
+                raise FileNotFoundError(f"No .pkl/.pickle files found in folder: {path}")
+            
         # load limit, same as msd if not set in config
         load_limit = self.settings["source"].get("limit", 100)
+        print(f"Loading up to {load_limit} graphs from disk.")
     
         graphs = []
         total_loaded_raw = 0
@@ -2675,7 +2682,7 @@ class SyntheticDatasetGenerator():
             if load_limit is not None and len(graphs) >= load_limit:
                 break
 
-        print(f"Loaded {len(graphs)} graphs from folder {folder_path} (Total discovered files: {len(pkl_files)}, with {total_loaded_raw} raw graphs).")
+        print(f"Loaded {len(graphs)} graphs from folder {path} (Total discovered files: {len(pkl_files)}, with {total_loaded_raw} raw graphs).")
 
         self.graphs["original"] = graphs
         return graphs

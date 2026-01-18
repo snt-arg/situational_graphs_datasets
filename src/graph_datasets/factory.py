@@ -10,11 +10,11 @@ import joblib
 
 from graph_datasets.config import get_config as get_datasets_config
 
-dataset_base = "synthetic"  # "synthetic" or "msd" or "custom_pickle"
-config_name = "ifh/ssg_manh_small_buildings"  # name of the config file in graph_datasets/config
+dataset_base = "msd"  # "synthetic" or "msd" or "custom_pickle"
+config_name = "ifh/msd_floors"  # name of the config file in graph_datasets/config
 extension_name = "original"  # "original" or "noise"
-pickle_name = "ifh/viz.pkl"
-n_graphs_reduction = 5
+pickle_name = "ifh/msd_buildings_X_2f2b_135o.pkl"
+n_graphs_reduction = 100  # set to None to use all graphs
 save_pickle = False
 visualize = True
 
@@ -25,7 +25,6 @@ if dataset_base == "synthetic":
     synteticdataset_settings = get_datasets_config(config_name)
     if n_graphs_reduction is not None:
         synteticdataset_settings["source"]["base_graphs"]["n_buildings"] = n_graphs_reduction
-
 
     dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
     dataset_generator.create_dataset()
