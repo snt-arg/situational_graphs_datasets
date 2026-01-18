@@ -8,7 +8,7 @@
             "min_room_entry_size" : [10,10],
             "room_center_distances" : [0.1,0.1],
             "wall_thickness" : [0.16,0.2],
-            "n_buildings" : 1500
+            "n_buildings" : 1000
         }
     },
     "noise":{

@@ -2,7 +2,7 @@
     "source" : {
         "type": "msd",
         "pickle_path": "/home/adminpc/workspaces/reasoning_ws/src/msd/data/msd_from_notebook_all.pickle",
-        "limit": 1500,
+        "limit": 1000,
         "max_nodes": 150,
         "base_graphs": {
             "grid_dims" : [[50,100],[50,100]],
