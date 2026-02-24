@@ -1,12 +1,15 @@
-{   
-    "base_graphs": {
-        "grid_dims" : [[1,15],[1,9]],
-        "playground_size": [100, 100],
-        "max_room_entry_size" : [4,4],
-        "min_room_entry_size" : [2,2],
-        "room_center_distances" : [4,8],
-        "wall_thickness" : [0.05,0.15],
-        "n_buildings" : 1
+{  
+    "source" : {
+        "type": "synthetic",
+        "base_graphs": {
+            "grid_dims" : [[30,30],[30,30]],
+            "playground_size": [100, 100],
+            "max_room_entry_size" : [15,20],
+            "min_room_entry_size" : [10,10],
+            "room_center_distances" : [0.1,0.1],
+            "wall_thickness" : [0.16,0.2],
+            "n_buildings" : 1
+        }
     },
     "noise":{
         "global":{
@@ -17,11 +20,11 @@
         "room": {
             "active": false,
             "translation": 0.01,
-            "rotation": 0.004
+            "rotation": 0.003
         },
         "ws": {
-            "active": false,
-            "rotation": 0.015
+            "active": true,
+            "rotation": 0.012
         }
     },
     "multiview": {
@@ -29,25 +32,34 @@
         "overlapping": 2
     },
     "training_split": {
-        "val" : 0.1,
-        "test" : 0.1
+        "val" : 0.0,
+        "test" : 0.0
     },
     "postprocess": {
-        "training": {
-            "use_gt": false,
-            "K_nearest_max": 15,
-            "K_random" : 0,
-            "node_dropout": 0.0
-        },
-        "final": {
-            "use_gt": false,
-            "K_nearest_max": 15,
-            "K_random" : 0,
-            "node_dropout": 0.0
-        }
+        "training": [
+            {"pp_name": "filter", 
+              "nodes": ["ws", "wall", "room"], 
+              "edges":[
+                [
+                    "ws_belongs_room",
+                    "ws_belongs_wall"
+                ]
+            ]},
+            {"pp_name": "add_door_nodes", "ratio": 1.0},
+            {"pp_name": "add_window_nodes", "ratio": 0.5}
+        ],
+        "final": [
+            {"pp_name": "K_near_neigh", "max": 15, "types":["ws"], "use_gt":false},
+            {"pp_name": "remove_self_loops"}
+        ]
     },
     "initial_features": {
-        "ws_node" : ["length", "normals"],
-        "edge" : ["min_dist", "relative_pos"]
+        "nodes": {
+            "ws": ["length"], "room":"center", "wall":"center"
+        },
+        "edges": {
+            "[ws,ws]": ["centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
+        }
     }
 }
+
