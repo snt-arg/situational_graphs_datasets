@@ -1,14 +1,15 @@
 {   
     "source" : {
-        "type": "synthetic",
+        "type": "disk",
+        "folder_path": "/home/adminpc/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/real/ssg_real_buildings",
+        "limit": 1000,
         "base_graphs": {
             "grid_dims" : [[50,100],[50,100]],
             "playground_size": [100, 100],
             "max_room_entry_size" : [75,75],
             "min_room_entry_size" : [10,10],
             "room_center_distances" : [0.1,0.1],
-            "wall_thickness" : [0.16,0.2],
-            "n_buildings" : 256
+            "wall_thickness" : [0.16,0.2]
         }
     },
     "noise":{
@@ -37,6 +38,7 @@
     },
     "postprocess": {
         "training": [
+            {"pp_name": "merge_room", "ratio": 0.0},
             {"pp_name": "update_viz"},
             {"pp_name": "unfreeze"},
             {"pp_name": "remove_self_loops"},
@@ -53,8 +55,17 @@
                     "room",
                     "room_belongs_floor",
                     "floor"
+                ],[
+                    "floor",
+                    "floor_belongs_building",
+                    "building"
+                ],[
+                    "building",
+                    "building_belongs_city",
+                    "city"
                 ]
             ]},
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
             {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
                 [
                     "ws",
@@ -80,54 +91,61 @@
                     "room",
                     "room_belongs_floor",
                     "floor"
+                ],[
+                    "floor",
+                    "floor_belongs_building",
+                    "building"
+                ],[
+                    "building",
+                    "building_belongs_city",
+                    "city"
                 ]
             ]},
-            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
-            {"pp_name": "merge_room", "ratio": 0.0},
-            {"pp_name": "dropout", "room": 0.0, "wall": 0.0,"ws":0.0, "propagate": false, "remove_lower": false},
-            {"pp_name": "add_local_noise", "rotation": 0.0, "translation":0.0, "entities": ["ws"]},
+            {"pp_name": "merge_edge_types", "common_type":"common"},
             {"pp_name": "to_undirected"},
-            {"pp_name": "merge_edge_types", "common_type":"common"}
+            {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
+                [
+                    "ws",
+                    "common",
+                    "ws"
+                ],[
+                    "ws",
+                    "common",
+                    "ws"
+                ],[
+                    "ws",
+                    "common",
+                    "ws"
+                ],[
+                    "ws",
+                    "common",
+                    "room"
+                ],[
+                    "ws",
+                    "common",
+                    "wall"
+                ],[
+                    "room",
+                    "common",
+                    "floor"
+                ],[
+                    "floor",
+                    "common",
+                    "building"
+                ],[
+                    "building",
+                    "common",
+                    "city"
+                ]
+            ]}
         ],
         "final": [
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
             {"pp_name": "remove_self_loops"}
             
         ],
-        "gt": [
-            {"pp_name": "merge_room", "ratio": 0.0},
-            {"pp_name": "update_viz"},
-            {"pp_name": "unfreeze"},
-            {"pp_name": "remove_self_loops"},
-            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
-            {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
-                [
-                    "ws",
-                    "training",
-                    "ws"
-                ],[
-                    "ws",
-                    "ws_same_wall",
-                    "ws"
-                ],[
-                    "ws",
-                    "ws_same_room",
-                    "ws"
-                ],[
-                    "ws",
-                    "ws_belongs_room",
-                    "room"
-                ],[
-                    "ws",
-                    "ws_belongs_wall",
-                    "wall"
-                ],[
-                    "room",
-                    "room_belongs_floor",
-                    "floor"
-                ]
-            ]},
-            {"pp_name": "dropout", "room": 0.0, "wall": 0.0,"ws":0.0, "propagate": false, "remove_lower": false},
+        "preprocess_real": [
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
             {"pp_name": "merge_edge_types", "common_type":"common"},
             {"pp_name": "to_undirected"},
             {"pp_name": "add_x"}

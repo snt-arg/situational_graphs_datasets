@@ -11,7 +11,7 @@ import joblib
 from graph_datasets.config import get_config as get_datasets_config
 
 dataset_base = "msd"  # "synthetic" or "msd" or "custom_pickle"
-config_name = "ifh/msd_floors"  # name of the config file in graph_datasets/config
+config_name = "ifh/msd_floors_viz"  # name of the config file in graph_datasets/config
 extension_name = "original"  # "original" or "noise"
 pickle_name = "ifh/msd_buildings_X_2f2b_135o.pkl"
 n_graphs_reduction = 100  # set to None to use all graphs

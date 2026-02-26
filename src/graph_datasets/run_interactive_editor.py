@@ -2,13 +2,14 @@ import queue
 import pickle
 import logging
 from pathlib import Path
+import joblib
 
 from graph_datasets.InteractiveGraphVisualizer import InteractiveGraphVisualizer as IGV
 from graph_wrapper.GraphWrapper import GraphWrapper as GW
 
 # config
-INTERACTIVE_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/viz").expanduser()
-OUTPUT_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/viz").expanduser()
+INTERACTIVE_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/real/JL").expanduser()
+OUTPUT_DIR = INTERACTIVE_DATASET_DIR
 LOAD_INDEX = 0  # index to load specific file
 
 # set logger
@@ -27,10 +28,10 @@ def load_and_sanitize_graph(idx: int) -> GW:
     selected = OUTPUT_DIR
 
     # find pkl files
-    pkl_files = sorted(selected.glob("*.pkl"))
+    pkl_files = sorted(selected.glob("*.pkl")) + sorted(selected.glob("*.joblib"))
     if not pkl_files:
         raise FileNotFoundError(f"No .pkl file found in {selected}")
-    
+        
     print("Available Files: ")
     for i, p in enumerate(pkl_files):
         print(f" [{i}] {p.name}")
@@ -43,8 +44,12 @@ def load_and_sanitize_graph(idx: int) -> GW:
     print(f"Loading Graph from {chosen}")
 
     # load pkl
-    with open(chosen, "rb") as f:
-        loaded_data = pickle.load(f)
+    if chosen.suffix == ".joblib":
+        loaded_data = joblib.load(chosen)
+
+    else:
+        with open(chosen, "rb") as f:
+            loaded_data = pickle.load(f)
 
     # handle sdg data
     raw_graph_obj = None

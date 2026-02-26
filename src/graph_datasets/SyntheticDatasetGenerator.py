@@ -43,12 +43,16 @@ viz_data_base = {"type": "Point", "feat": 'ro', "data": np.array([]), "linewidth
 
 class SyntheticDatasetGenerator():
 
-    def __init__(self, settings, logger = None, report_path = "", dataset_name = ""):
+    def __init__(self, settings, logger = None, report_path = "", dataset_name = "", seed=0):
         print(f"SyntheticDatasetGenerator:", Fore.GREEN + "Initializing" + Fore.WHITE)
         self.settings = self.correct_json_initfeat_keys(settings)
         self.logger = logger
         self.report_path = report_path
         self.dataset_name = dataset_name
+
+        random.seed(seed)
+        os.environ['PYTHONHASHSEED'] = str(seed)
+        np.random.seed(seed)
 
         # dynamic save dir (either from settings or relative to file path)
         if "save_dir" in self.settings:
@@ -505,7 +509,7 @@ class SyntheticDatasetGenerator():
         return graph
     
     def add_stories(self, graph, n_floors = None, add_floor_nodes = False):
-        story_height = 3
+        story_height = 5
         initial_graph = copy.deepcopy(graph)
 
         if add_floor_nodes:
@@ -915,7 +919,7 @@ class SyntheticDatasetGenerator():
             # base building bbox
             base_bbox = new_builidng.get_bounding_box()
 
-            story_height = 3  # must match add_stories()
+            story_height = 5  # must match add_stories()
             for k in range(1, target_stories):
                 if source_type == "msd":
                     # for msd additional floors are duplicates of the base
@@ -2173,7 +2177,7 @@ class SyntheticDatasetGenerator():
 
         val_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["val"]-self.settings["training_split"]["test"]))
         test_start_index = int(len(nxdataset)*(1-self.settings["training_split"]["test"]))
-        extended_nxdatset = {"train" : new_nxdataset[:val_start_index], "val" : new_nxdataset[val_start_index:test_start_index],"test" : new_nxdataset[test_start_index:-1]}
+        extended_nxdatset = {"train" : new_nxdataset[:val_start_index], "val" : new_nxdataset[val_start_index:test_start_index],"test" : new_nxdataset[test_start_index:]}
         self.graphs["extended"] = new_nxdataset
         
         return extended_nxdatset
@@ -2755,6 +2759,7 @@ class SyntheticDatasetGenerator():
             #             graph = graph_list[idx]
             #             graph.serialize_diGraph(dataset_tag_dir / f"{group_index}_{i}.pt")
             #             idx += 1
+            
         # serilize in the dataset_dir the dimensions
         with open(os.path.join(dataset_dir, "dimensions.pickle"), 'wb') as f:
             pickle.dump(dimensions, f)

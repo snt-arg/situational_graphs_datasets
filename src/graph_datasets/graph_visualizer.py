@@ -71,10 +71,10 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids
         plt.close(fig)
     return fig
 
-def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None, blocking=False, hide_axes=True):
+def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None, blocking=False, hide_axes=True, add_legend=False, zoom_factor = 1.):
     nodes_data = graph.get_attributes_of_all_nodes()
     node_attr_dict = {nd[0]: nd[1] for nd in nodes_data}
-    fig = plt.figure(image_name)
+    fig = plt.figure(image_name, figsize = [12,12])
     ax = fig.add_subplot(111, projection='3d')
 
     def to_3d(arr):
@@ -93,7 +93,7 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
     for node_data in nodes_data:
         node_id = node_data[0]
         if node_data[1]["viz"]["type"] == "Point":
-            markersize = node_data[1].get("markersize", 1.0)
+            markersize = node_data[1].get("markersize", 2.0)
             viz_data = to_3d(node_data[1]["viz"]["center"])
             color = _mpl_color_from_feat(node_data[1]["viz"]["feat"])
             marker = node_data[1]["viz"]["feat"][1] if len(node_data[1]["viz"]["feat"]) > 1 else 'o'
@@ -207,6 +207,7 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
         x_coords.extend([source[0], target[0]])
         y_coords.extend([source[1], target[1]])
         z_coords.extend([source[2], target[2]])
+
         if "pred" in edge_data[2]:
             # Include label position
             mid = (source + target) / 2
@@ -236,7 +237,7 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
         x_range = x_max - x_min
         y_range = y_max - y_min
         z_range = z_max - z_min
-        max_range = max(x_range, y_range, z_range)
+        max_range = max(x_range, y_range, z_range) * zoom_factor
         
         # Center each axis and apply the maximum range
         x_center = (x_min + x_max) / 2
@@ -247,7 +248,8 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
         ax.set_ylim(y_center - max_range/2, y_center + max_range/2)
         ax.set_zlim(z_center - max_range/2, z_center + max_range/2)
 
-    ax.legend()
+    if add_legend:
+        ax.legend()
 
     # --- Interactivity: highlight node, plane node, and edges on hover ---
     def on_motion(event):
@@ -279,7 +281,7 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
         # Reset all nodes/edges/planes
         for nid, artist in node_artists:
             artist.set_facecolor(_mpl_color_from_feat(node_attr_dict[nid]["viz"]["feat"]))
-            artist.set_sizes([node_attr_dict[nid].get("markersize", 1.0)*30])
+            artist.set_sizes([node_attr_dict[nid].get("markersize", 2.0)*30])
         for edge_data, artist in edge_artists:
             artist.set_color(_mpl_color_from_feat(edge_data[2].get("viz_feat", "k")))
             artist.set_linewidth(edge_data[2].get("linewidth", 1.5))
@@ -361,7 +363,8 @@ def _mpl_color_from_feat(viz_feat):
             'y': 'yellow',
             'o': 'orange',
             'p': 'purple',
-            'a': 'gray'
+            'a': 'gray',
+            'cb': 'lightblue'
 
         }
         c = viz_feat[0]

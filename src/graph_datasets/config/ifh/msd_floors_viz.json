@@ -1,0 +1,74 @@
+{   
+    "source" : {
+        "type": "msd",
+        "pickle_path": "/home/adminpc/workspaces/reasoning_ws/src/msd/data/msd_from_notebook_all.pickle",
+        "limit": 3467,
+        "max_nodes": 135
+    },
+    "noise":{
+        "global":{
+            "active": true,
+            "translation": 0,
+            "rotation": 1.0
+        },
+        "room": {
+            "active": true,
+            "translation": 0.01,
+            "rotation": 0.003
+        },
+        "ws": {
+            "active": true,
+            "rotation": 0.012
+        }
+    },
+    "multiview": {
+        "number":2,
+        "overlapping": 2
+    },
+    "training_split": {
+        "val" : 0.1,
+        "test" : 0.1
+    },
+    "postprocess": {
+        "training": [
+            {"pp_name": "merge_room", "ratio": 0.0},
+            {"pp_name": "update_viz"},
+            {"pp_name": "unfreeze"},
+            {"pp_name": "remove_self_loops"},
+            {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
+                [
+                    "ws",
+                    "ws_belongs_room",
+                    "room"
+                ],[
+                    "ws",
+                    "ws_belongs_wall",
+                    "wall"
+                ],[
+                    "room",
+                    "room_belongs_floor",
+                    "floor"
+                ]
+            ]},
+            {"pp_name": "add_stories", "add_floor_nodes": true, "n_stories": 2},
+            {"pp_name": "add_local_noise", "rotation": 0.0, "translation":0.0, "entities": ["ws", "wall","room", "floor"]},
+            {"pp_name": "dropout", "room": 0.0, "wall": 0.0,"ws":0.0, "propagate": false, "remove_lower": false},
+            {"pp_name": "merge_edge_types", "common_type":"common"},
+            {"pp_name": "to_undirected"}
+        ],
+        "final": [
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
+            {"pp_name": "remove_self_loops"}
+            
+        ]
+    },
+    "initial_features": {
+        "nodes": {
+            "ws": ["length"], "room":"center", "wall":"center", "floor":"center"
+        },
+        "edges": {
+            "[ws,ws]": ["centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
+        }
+    }
+}
+
