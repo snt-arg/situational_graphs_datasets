@@ -1126,7 +1126,7 @@ class SyntheticDatasetGenerator():
         return combined_city_graph
     
 
-    def add_random_objects(self, graph, max_obj):
+    def add_random_objects(self, graph, obj_max, distrib):
         def lines_to_polygon(lines):
             """
             lines: list of line segments, each as [(x1, y1), (x2, y2)]
@@ -1184,7 +1184,7 @@ class SyntheticDatasetGenerator():
             room_center = np.asarray(graph.get_attributes_of_node(room_id)["center"], dtype=float)
             room_z = float(room_center[2])
 
-            obj_poses = random_points_in_polygon(poly, random.randint(0, max_obj + 1), z_val=room_z)
+            obj_poses = random_points_in_polygon(poly, random.randint(0, obj_max["room"]), z_val=room_z)
 
             new_edges = []
             for obj_pose in obj_poses:
@@ -1195,12 +1195,134 @@ class SyntheticDatasetGenerator():
                 obj_viz = copy.deepcopy(viz_data_base)
                 obj_viz.update({"type": "Point", "feat": 'ks', "center": viz_obj_pose})
 
-                graph.add_nodes([(obj_id,{"type" : "object", "x" : obj_pose, "center" : obj_pose, "viz" : obj_viz})])
-                new_edges.append((obj_id, room_id, {"type": "object_same_room", "x":[], "viz_feat": "black", "linewidth":1.0, "alpha":0.5}))
+                obj_type = random.choice(["chair", "table"])
+
+                graph.add_nodes([(obj_id,{"type" : "object", "object_type": obj_type, "x" : obj_pose, "center" : obj_pose, "viz" : obj_viz})])
+                new_edges.append((obj_id, room_id, {"type": "object_belongs_room", "x":[], "viz_feat": "black", "linewidth":1.0, "alpha":0.5}))
 
             if new_edges:
                 graph.add_edges(new_edges)
+
+        wall_ids = copy.deepcopy(graph.filter_graph_by_node_types("wall").get_nodes_ids())
+        for wall_id in wall_ids:
+            n_wall_objects = random.randint(0, obj_max["door"])
+            if n_wall_objects > 0:
+                wall_attrs = graph.get_attributes_of_node(wall_id)
+                wall_center = np.asarray(wall_attrs["center"], dtype=float)
+                
+                # Get the two ws nodes connected to this wall
+                wall_ws_ids = list(graph.get_neighbourhood_graph(wall_id).filter_graph_by_node_types("ws").get_nodes_ids())
+                
+                if len(wall_ws_ids) >= 2:
+                    # Use wall center x,y coordinates with wall's z position
+                    obj_pose = np.array([wall_center[0], wall_center[1], wall_center[2]], dtype=float)
+
+                    obj_id = max(graph.get_nodes_ids()) + 1
+                    
+                    viz_obj_pose = obj_pose + self.viz_center_offsets["object"]
+                    obj_viz = copy.deepcopy(viz_data_base)
+                    obj_viz.update({"type": "Point", "feat": 'ks', "center": viz_obj_pose})
+
+                    graph.add_nodes([(obj_id,{"type" : "object", "object_type": "door", "x" : obj_pose, "center" : obj_pose, "viz" : obj_viz})])
+                    
+                    # Connect door/window to the wall
+                    graph.add_edges([(obj_id, wall_id, {"type": "object_belongs_wall", "x":[], "viz_feat": "black", "linewidth":1.0, "alpha":0.5})])
+                    
+                    # Connect door/window to the two ws nodes
+                    for ws_id in wall_ws_ids[:2]:  # Take first two ws nodes
+                        graph.add_edges([(obj_id, ws_id, {"type": "object_belongs_ws", "x":[], "viz_feat": "gray", "linewidth":1.0, "alpha":0.5})])
+
+        # Add windows to ws nodes that are not associated with any wall
+        all_ws_ids = copy.deepcopy(graph.filter_graph_by_node_types("ws").get_nodes_ids())
+        
+        # Find ws nodes that are not connected to any walls
+        ws_with_walls = set()
+        for wall_id in wall_ids:
+            wall_ws_ids = graph.get_neighbourhood_graph(wall_id).filter_graph_by_node_types("ws").get_nodes_ids()
+            ws_with_walls.update(wall_ws_ids)
+        
+        ws_without_walls = [ws_id for ws_id in all_ws_ids if ws_id not in ws_with_walls]
+        
+        for ws_id in ws_without_walls:
+            n_ws_windows = random.randint(0, obj_max.get("window", 1))  # Use window limit or default to 1
+            if n_ws_windows > 0:
+                ws_attrs = graph.get_attributes_of_node(ws_id)
+                ws_limits = ws_attrs["limits"]  # Get the segment endpoints
+                ws_z = float(ws_attrs["center"][2])  # Get z coordinate from center
+                
+                # Create multiple window objects
+                for _ in range(n_ws_windows):
+                    # Sample random point along the ws segment
+                    p1, p2 = np.asarray(ws_limits[0], dtype=float), np.asarray(ws_limits[1], dtype=float)
+                    t = random.random()
+                    obj_xy = (1 - t) * p1[:2] + t * p2[:2]
+                    obj_pose = np.array([obj_xy[0], obj_xy[1], ws_z], dtype=float)
+
+                    obj_id = max(graph.get_nodes_ids()) + 1
+                    
+                    viz_obj_pose = obj_pose + self.viz_center_offsets["object"]
+                    obj_viz = copy.deepcopy(viz_data_base)
+                    obj_viz.update({"type": "Point", "feat": 'ks', "center": viz_obj_pose})
+
+                    graph.add_nodes([(obj_id,{"type" : "object", "object_type": "window", "x" : obj_pose, "center" : obj_pose, "viz" : obj_viz})])
+                    
+                    # Connect window to the ws node
+                    graph.add_edges([(obj_id, ws_id, {"type": "object_belongs_ws", "x":[], "viz_feat": "blue", "linewidth":1.0, "alpha":0.5})])
             
+        return graph
+    
+    def apply_global_noise(self, graph, settings):
+        """
+        Apply global noise transformation to the graph.
+        
+        Args:
+            graph: GraphWrapper object to transform
+            settings: Dictionary containing noise parameters with keys:
+                - "translation": translation noise factor
+                - "rotation": rotation noise factor (in degrees)
+        
+        Returns:
+            GraphWrapper: The transformed graph
+        """
+        global_translation = np.array(settings["translation"]) * (np.random.rand(2) - 0.5)
+        global_rotation_angle = np.random.rand() * 360 * settings["rotation"]
+        rotation_matrix_2d = R.from_euler("Z", global_rotation_angle, degrees=True).as_matrix()[:2, :2]
+
+        for node_id, node_attrs in graph.get_attributes_of_all_nodes():
+            if "center" in node_attrs:
+                new_center = rotation_matrix_2d @ (node_attrs["center"][:2] + global_translation)
+                node_attrs["center"][:2] = new_center
+                node_attrs["viz"]["center"] = new_center
+
+            if "normal" in node_attrs:
+                new_normal = rotation_matrix_2d @ node_attrs["normal"][:2]
+                node_attrs["normal"][:2] = new_normal
+
+            if "polygon" in node_attrs:
+                new_polygon = [
+                    rotation_matrix_2d @ (np.array(point[:2]) + global_translation)
+                    for point in node_attrs["polygon"]
+                ]
+                node_attrs["polygon"] = [p.tolist() for p in new_polygon]
+                
+            if "limits" in node_attrs:
+                new_limits = []
+                for point in node_attrs["limits"]:
+                    point_array = np.array(point)
+                    # Transform only X,Y coordinates, preserve Z if it exists
+                    if len(point_array) >= 2:
+                        transformed_xy = rotation_matrix_2d @ (point_array[:2] + global_translation)
+                        if len(point_array) >= 3:
+                            # Preserve Z coordinate
+                            new_point = [transformed_xy[0], transformed_xy[1], point_array[2]]
+                        else:
+                            # Only had X,Y coordinates
+                            new_point = [transformed_xy[0], transformed_xy[1]]
+                        new_limits.append(new_point)
+                node_attrs["limits"] = new_limits
+
+            graph.update_node_attrs(node_id, node_attrs)
+        
         return graph
     
     def merge_edge_types(self, graph, common_edge_type):
@@ -1275,6 +1397,14 @@ class SyntheticDatasetGenerator():
                 for wall_ws_node_id in wall_ws_node_ids:
                     if len(list(working_graph.get_neighbourhood_graph(wall_ws_node_id).filter_graph_by_node_types(["ws"]).get_nodes_ids())) < 3:
                         node_ids_selected.append(wall_ws_node_id)
+
+                obj_ws_node_ids = list(working_graph.get_neighbourhood_graph(ws_node_id).filter_graph_by_node_types(["object"]).get_nodes_ids())
+                for obj_ws_node_id in obj_ws_node_ids:
+                    node_ids_selected.append(obj_ws_node_id)
+
+            obj_ws_node_ids = list(working_graph.get_neighbourhood_graph(node_id).filter_graph_by_node_types(["object"]).get_nodes_ids())
+            for obj_ws_node_id in obj_ws_node_ids:
+                node_ids_selected.append(obj_ws_node_id)
                 
         if node_type == "ws": ### TODO FIX
             node_ids_selected.append(node_id)
@@ -1674,13 +1804,28 @@ class SyntheticDatasetGenerator():
             while len(remaining_rooms_ids) > n_rooms_to_remove:
                 rooms_to_remove = random.sample(remaining_rooms_ids, n_rooms_to_remove)
                 for room_id in rooms_to_remove:
-                    working_graph = self.dropout_by_hierarchy(room_id, working_graph, update_higher_nodes=True)
+                    working_graph = self.dropout_by_hierarchy(room_id, working_graph, update_higher_nodes=True, remove_lower_nodes=True)
                 graph_sequence.append(copy.deepcopy(working_graph))
 
                 remaining_rooms_ids = list(working_graph.filter_graph_by_node_types("room").get_nodes_ids())
                 n_rooms_to_remove = random.randint(pp_settings["elements"]["room"][0], pp_settings["elements"]["room"][1])
 
         return graph_sequence
+    
+    def compose_a_s_graphs(self, nxdataset):
+
+        composed_datset = []
+
+        for graphs_list in nxdataset:
+            a_graph = copy.deepcopy(graphs_list[0]).upgrade_objects_type()
+
+            extended_s_graphs = self.extend_nxdataset(graphs_list, "", "s_graphs")["train"]
+            extended_s_graphs = [g[0] for g in extended_s_graphs]
+
+            composed_datset.append((a_graph, extended_s_graphs))
+        
+        return composed_datset
+            
 
     def extend_nxdataset(self, nxdataset, new_edge_type, stage):
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Extending Dataset" + Fore.WHITE)
@@ -1967,34 +2112,7 @@ class SyntheticDatasetGenerator():
             elif pp_settings["pp_name"] == "unfreeze":
                 working_graph.unfreeze()
             elif pp_settings["pp_name"] == "add_global_noise":
-                global_translation = np.array(pp_settings["translation"]) * (np.random.rand(2) - 0.5)
-                global_rotation_angle = np.random.rand() * 360 * pp_settings["rotation"]
-                rotation_matrix_2d = R.from_euler("Z", global_rotation_angle, degrees=True).as_matrix()[:2, :2]
-
-                for node_id, node_attrs in working_graph.get_attributes_of_all_nodes():
-                    if "center" in node_attrs:
-                        new_center = rotation_matrix_2d @ (node_attrs["center"][:2] + global_translation)
-                        node_attrs["center"][:2] = new_center
-                        node_attrs["viz"]["center"] = new_center
-
-                    if "normal" in node_attrs:
-                        new_normal = rotation_matrix_2d @ node_attrs["normal"][:2]
-                        node_attrs["normal"][:2] = new_normal
-
-                    if "polygon" in node_attrs:
-                        new_polygon = [
-                            rotation_matrix_2d @ (np.array(point[:2]) + global_translation)
-                            for point in node_attrs["polygon"]
-                        ]
-                        node_attrs["polygon"] = [p.tolist() for p in new_polygon]
-                    if "limits" in node_attrs:
-                        new_limits = [
-                            rotation_matrix_2d @ (np.array(point[:2]) + global_translation)
-                            for point in node_attrs["limits"]
-                        ]
-                        node_attrs["limits"] = [p.tolist() for p in new_limits]
-
-                    working_graph.update_node_attrs(node_id, node_attrs)
+                working_graph = self.apply_global_noise(working_graph, pp_settings)
 
             elif pp_settings["pp_name"] == "add_local_noise":
                 emergent_concepts = ["wall", "room", "floor", "building", "city"]
@@ -2094,7 +2212,7 @@ class SyntheticDatasetGenerator():
                 working_graph = self.add_buildings(working_graph, pp_settings["n_buildings"], pp_settings["area_shape"], pp_settings["area_radius"])
 
             elif pp_settings["pp_name"] == "add_random_objects":
-                working_graph = self.add_random_objects(working_graph, pp_settings["max_obj"])
+                working_graph = self.add_random_objects(working_graph, pp_settings["max"], pp_settings["distrib"])
 
             elif pp_settings["pp_name"] == "merge_edge_types":
                 working_graph = self.merge_edge_types(working_graph, pp_settings["common_type"])
@@ -2142,6 +2260,9 @@ class SyntheticDatasetGenerator():
 
             elif pp_settings["pp_name"] == "randomize_edges":
                 working_graph = working_graph.randomize_edges(pp_settings["percentage"])
+
+            elif pp_settings["pp_name"] == "upgrade_objects_type":
+                working_graph = working_graph.upgrade_objects_type()
 
             return working_graph
 
@@ -2442,14 +2563,41 @@ class SyntheticDatasetGenerator():
             pickle.dump(nxdataset, f, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Dataset saved to pickle" + Fore.WHITE)
 
-    def save_networkx_graphs_to_pickle(self, nxdataset, path):
+    def save_networkx_graphs_to_pickle(self, nxdataset, path, save_wrapper=False):
         import pickle
-        nx_list = [wrapper.graph for wrapper in nxdataset]
+        
+        # Handle different data structures
+        if isinstance(nxdataset, dict):
+            # If nxdataset is a dictionary, process each value
+            data_to_save = {}
+            for key, value in nxdataset.items():
+                data_to_save[key] = self._process_dataset_element(value, save_wrapper)
+        elif isinstance(nxdataset, list):
+            # If nxdataset is a list
+            data_to_save = self._process_dataset_element(nxdataset, save_wrapper)
+        else:
+            # Single element
+            data_to_save = self._process_dataset_element(nxdataset, save_wrapper)
 
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Saving Dataset to pickle" + Fore.WHITE)
         with open(path, 'wb') as f:
-            pickle.dump(nx_list, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(data_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Dataset saved to pickle" + Fore.WHITE)
+    
+    def _process_dataset_element(self, element, save_wrapper):
+        """Helper method to process dataset elements based on their structure"""
+        if isinstance(element, list):
+            # If element is a list, process each item in the list
+            if save_wrapper:
+                return element  # Return wrappers as-is
+            else:
+                return [item.graph if hasattr(item, 'graph') else item for item in element]
+        else:
+            # Single element
+            if save_wrapper:
+                return element  # Return wrapper as-is
+            else:
+                return element.graph if hasattr(element, 'graph') else element
 
     def serialize_dataset(self, digraphs=False):
         dataset_dir = Path(self.dataset_path)

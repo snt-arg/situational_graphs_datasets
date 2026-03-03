@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 import torch
+import json
 # from matplotlib.patches import ConnectionPatch
 from mpl_toolkits.mplot3d import proj3d  # Add this import at the top of your file
 
@@ -71,7 +72,7 @@ def visualize_nxgraph(graph, image_name, visualize_alone=False, include_node_ids
         plt.close(fig)
     return fig
 
-def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None, blocking=False, hide_axes=True, add_legend=False, zoom_factor = 1.):
+def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_ids=True, logger=None, blocking=False, hide_axes=True, add_legend=False, zoom_factor = 1., show_hover_tooltips=False):
     nodes_data = graph.get_attributes_of_all_nodes()
     node_attr_dict = {nd[0]: nd[1] for nd in nodes_data}
     fig = plt.figure(image_name, figsize = [12,12])
@@ -251,9 +252,40 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
     if add_legend:
         ax.legend()
 
+    # Initialize tooltip text
+    tooltip_text = None
+    
+    def _format_node_attributes(node_attrs, indent=0):
+        """Format node attributes as a readable nested structure"""
+        formatted_lines = []
+        for key, value in node_attrs.items():
+            if isinstance(value, dict):
+                formatted_lines.append("  " * indent + f"{key}:")
+                formatted_lines.extend(_format_node_attributes(value, indent + 1))
+            elif isinstance(value, (list, tuple)):
+                if len(value) > 0 and all(isinstance(x, (int, float)) for x in value):
+                    # Format numeric arrays nicely
+                    if len(value) <= 3:
+                        formatted_lines.append("  " * indent + f"{key}: [{', '.join([f'{x:.2f}' if isinstance(x, float) else str(x) for x in value])}]")
+                    else:
+                        formatted_lines.append("  " * indent + f"{key}: [array of {len(value)} elements]")
+                else:
+                    formatted_lines.append("  " * indent + f"{key}: {str(value)}")
+            elif isinstance(value, float):
+                formatted_lines.append("  " * indent + f"{key}: {value:.4f}")
+            else:
+                formatted_lines.append("  " * indent + f"{key}: {str(value)}")
+        return formatted_lines
+
     # --- Interactivity: highlight node, plane node, and edges on hover ---
     def on_motion(event):
+        nonlocal tooltip_text
         if event.inaxes != ax:
+            # Remove tooltip when mouse leaves the plot area
+            if tooltip_text is not None:
+                tooltip_text.remove()
+                tooltip_text = None
+                fig.canvas.draw_idle()
             return
         min_dist = float('inf')
         closest_node = None
@@ -339,6 +371,31 @@ def visualize_nxgraph_3d(graph, image_name, visualize_alone=False, include_node_
                     normal_artist.set_linewidth(4)
                     main_line_artist.set_color('orange')
                     main_line_artist.set_linewidth(4)
+        
+        # Handle tooltips
+        if show_hover_tooltips:
+            # Remove existing tooltip
+            if tooltip_text is not None:
+                tooltip_text.remove()
+                tooltip_text = None
+            
+            # Show tooltip for hovered node
+            tooltip_node = closest_node if closest_node is not None else closest_plane
+            if tooltip_node is not None:
+                node_attrs = node_attr_dict[tooltip_node]
+                formatted_attrs = _format_node_attributes(node_attrs)
+                tooltip_content = f"Node {tooltip_node}:\n" + "\n".join(formatted_attrs)
+                
+                # Position tooltip near mouse cursor
+                tooltip_text = ax.text2D(0.02, 0.98, tooltip_content,
+                                       transform=ax.transAxes,
+                                       fontsize=8,
+                                       verticalalignment='top',
+                                       bbox=dict(boxstyle='round,pad=0.5', 
+                                               facecolor='yellow', 
+                                               alpha=0.8,
+                                               edgecolor='black'))
+        
         fig.canvas.draw_idle()
 
     fig.canvas.mpl_connect('motion_notify_event', on_motion)

@@ -1,0 +1,133 @@
+{   
+    "source" : {
+        "type": "synthetic",
+        "base_graphs": {
+            "grid_dims" : [[70,100],[70,100]],
+            "playground_size": [100, 100],
+            "max_room_entry_size" : [100,100],
+            "min_room_entry_size" : [10,10],
+            "room_center_distances" : [0.1,0.1],
+            "wall_thickness" : [0.16,0.2],
+            "n_buildings" : 3000
+        }
+    },
+    "noise":{
+        "global":{
+            "active": true,
+            "translation": 0,
+            "rotation": 1.0
+        },
+        "room": {
+            "active": false,
+            "translation": 0.01,
+            "rotation": 0.003
+        },
+        "ws": {
+            "active": false,
+            "rotation": 0.012
+        }
+    },
+    "multiview": {
+        "number":2,
+        "overlapping": 2
+    },
+    "training_split": {
+        "val" : 0.0,
+        "test" : 0.0
+    },
+    "postprocess": {
+        "training": [
+            {"pp_name": "merge_room", "ratio": 0.0},
+            {"pp_name": "unfreeze"},
+            {"pp_name": "remove_self_loops"},
+            {"pp_name": "filter", "nodes": ["ws", "room","wall"], "edges":[
+                [
+                    "ws",
+                    "training",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_same_wall",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_same_room",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_belongs_room",
+                    "room"
+                ],[
+                    "ws",
+                    "ws_belongs_wall",
+                    "wall"
+                ],[
+                    "room",
+                    "room_belongs_floor",
+                    "floor"
+                ]
+            ]},
+            {"pp_name": "to_undirected"},
+            {"pp_name": "add_random_objects", "max": {"room":2, "door":1, "window":2}, "distrib": "log"},
+            {"pp_name": "filter", "nodes": ["ws", "room","object"], "edges":[
+                [
+                    "ws",
+                    "training",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_same_wall",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_same_room",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_belongs_room",
+                    "room"
+                ],[
+                    "ws",
+                    "ws_belongs_wall",
+                    "wall"
+                ],[
+                    "room",
+                    "room_belongs_floor",
+                    "floor"
+                ],
+                [
+                    "object",
+                    "object_belongs_room",
+                    "room"
+                ],
+                [
+                    "object",
+                    "object_belongs_ws",
+                    "ws"
+                ]
+            ]},
+            {"pp_name": "update_viz"},
+            {"pp_name": "incremental_observations", "elements": {"room": [1, 1]}}
+            
+        ],
+        "s_graphs":[
+            {"pp_name": "add_global_noise", "translation": 0, "rotation": 0.0},
+            {"pp_name": "update_viz"},
+            {"pp_name": "upgrade_objects_type"}
+        ],
+        "final": [
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
+            {"pp_name": "remove_self_loops"}
+            
+        ]
+    },
+    "initial_features": {
+        "nodes": {
+            "ws": ["length"], "room":"center", "wall":"center", "floor":"center"
+        },
+        "edges": {
+            "[ws,ws]": ["centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
+        }
+    }
+}
+
