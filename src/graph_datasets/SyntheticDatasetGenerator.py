@@ -43,16 +43,18 @@ viz_data_base = {"type": "Point", "feat": 'ro', "data": np.array([]), "linewidth
 
 class SyntheticDatasetGenerator():
 
-    def __init__(self, settings, logger = None, report_path = "", dataset_name = "", seed=0):
+    def __init__(self, settings, logger = None, report_path = "", dataset_name = "", seed=None):
         print(f"SyntheticDatasetGenerator:", Fore.GREEN + "Initializing" + Fore.WHITE)
         self.settings = self.correct_json_initfeat_keys(settings)
         self.logger = logger
         self.report_path = report_path
         self.dataset_name = dataset_name
 
-        random.seed(seed)
-        os.environ['PYTHONHASHSEED'] = str(seed)
-        np.random.seed(seed)
+        if seed:
+            random.seed(seed)
+            os.environ['PYTHONHASHSEED'] = str(seed)
+            np.random.seed(seed)
+        self.seed = seed
 
         # dynamic save dir (either from settings or relative to file path)
         if "save_dir" in self.settings:
@@ -186,10 +188,37 @@ class SyntheticDatasetGenerator():
         # time.sleep(999)
 
     def generate_base_matrix(self):
-        grid_dims = [np.random.randint(self.settings["source"]["base_graphs"]["grid_dims"][0][0], self.settings["source"]["base_graphs"]["grid_dims"][0][1] + 1),
-                     np.random.randint(self.settings["source"]["base_graphs"]["grid_dims"][1][0], self.settings["source"]["base_graphs"]["grid_dims"][1][1] + 1)]
-        max_room_entry_size = np.random.randint(self.settings["source"]["base_graphs"]["max_room_entry_size"][0], self.settings["source"]["base_graphs"]["max_room_entry_size"][1] + 1)
-        min_room_entry_size = np.random.randint(self.settings["source"]["base_graphs"]["min_room_entry_size"][0], self.settings["source"]["base_graphs"]["min_room_entry_size"][1] + 1)
+        base_graph_settings = self.settings["source"]["base_graphs"]
+        grid_dims = [np.random.randint(base_graph_settings["grid_dims"][0][0], base_graph_settings["grid_dims"][0][1] + 1),
+                     np.random.randint(base_graph_settings["grid_dims"][1][0], base_graph_settings["grid_dims"][1][1] + 1)]
+        max_room_entry_size = np.random.randint(base_graph_settings["max_room_entry_size"][0], base_graph_settings["max_room_entry_size"][1] + 1)
+        min_room_entry_size = np.random.randint(base_graph_settings["min_room_entry_size"][0], base_graph_settings["min_room_entry_size"][1] + 1)
+        
+        # Check for room symmetries configuration
+        room_similar_dimensions = base_graph_settings.get("symmetries", {}).get("room_similar_dimensions", 0)
+        
+        # Generate shared dimensions if symmetries are enabled
+        shared_dim_x = None
+        shared_dim_y = None
+        
+        if room_similar_dimensions >= 1:
+            # Generate shared dimension(s)
+            if room_similar_dimensions == 1:
+                # Choose randomly whether to share x or y dimension
+                share_x = np.random.choice([True, False])
+                if share_x:
+                    shared_dim_x = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
+                else:
+                    shared_dim_y = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
+            elif room_similar_dimensions == 2:
+                # Share both dimensions with the same value (square rooms)
+                shared_dim = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
+                shared_dim_x = shared_dim
+                shared_dim_y = shared_dim
+            elif room_similar_dimensions == 3:
+                # Share both dimensions but with different values
+                shared_dim_x = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
+                shared_dim_y = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
         
         ### Base matrix
         base_matrix = np.zeros(grid_dims)
@@ -208,8 +237,29 @@ class SyntheticDatasetGenerator():
                     else:
                         remaining_y = len(base_matrix[i,j:])
                     remaining = [remaining_x, remaining_y]
-                    room_entry_size = [min(remaining[0], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0]),\
-                                       min(remaining[1], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0])]
+                    
+                    # Generate room dimensions based on symmetry settings
+                    if room_similar_dimensions == 0:
+                        # Original behavior - random dimensions for each room
+                        room_entry_size = [min(remaining[0], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0]),\
+                                           min(remaining[1], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0])]
+                    else:
+                        # Use shared dimensions where applicable - only create room if it fits
+                        if shared_dim_x is not None:
+                            dim_x = shared_dim_x if remaining[0] >= shared_dim_x else None
+                        else:
+                            dim_x = min(remaining[0], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0])
+                        
+                        if shared_dim_y is not None:
+                            dim_y = shared_dim_y if remaining[1] >= shared_dim_y else None
+                        else:
+                            dim_y = min(remaining[1], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0])
+                        
+                        # Only create room if both dimensions fit (or are not constrained by symmetry)
+                        if dim_x is not None and dim_y is not None:
+                            room_entry_size = [dim_x, dim_y]
+                        else:
+                            room_entry_size = [1, 1]  # Will be marked as -1 (no room) due to size constraint
 
                     if (room_entry_size[0] >= min_room_entry_size) & (room_entry_size[1] >= min_room_entry_size):
                         room_id = room_n
@@ -220,7 +270,185 @@ class SyntheticDatasetGenerator():
                         for jj in range(room_entry_size[1]):
                             base_matrix[i+ii, j+jj] = room_id
         self.max_n_rooms = max(self.max_n_rooms, room_n)
+        
+        # Apply global symmetries if enabled
+        global_level = base_graph_settings.get("symmetries", {}).get("global_level", 0)
+        if global_level > 0:
+            base_matrix = self.apply_global_symmetries(base_matrix, global_level)
+        
         return base_matrix
+
+    def apply_global_symmetries(self, base_matrix, global_level):
+        """Apply global symmetries and ensure unique room IDs."""
+        if global_level == 0:
+            return base_matrix  # No symmetries applied
+            
+        original_matrix = base_matrix.copy()
+        
+        if global_level == 1:
+            # Single axis mirror - randomly choose direction
+            use_horizontal = np.random.choice([True, False])
+            if use_horizontal:
+                # Horizontal mirror (left-right)
+                half_width = base_matrix.shape[1] // 2
+                if half_width > 0:
+                    # Clear the target region first to avoid fragments
+                    base_matrix[:, half_width:] = 0
+                    # Apply symmetry
+                    target_width = base_matrix.shape[1] - half_width
+                    source_region = original_matrix[:, :half_width]
+                    if target_width == half_width:
+                        # Even width - perfect mirror
+                        base_matrix[:, half_width:] = np.fliplr(source_region)
+                    else:
+                        # Odd width - mirror the maximum possible
+                        mirrored = np.fliplr(source_region)
+                        base_matrix[:, -half_width:] = mirrored
+            else:
+                # Vertical mirror (top-bottom) 
+                half_height = base_matrix.shape[0] // 2
+                if half_height > 0:
+                    # Clear the target region first
+                    base_matrix[half_height:, :] = 0
+                    # Apply symmetry
+                    target_height = base_matrix.shape[0] - half_height
+                    source_region = original_matrix[:half_height, :]
+                    if target_height == half_height:
+                        # Even height - perfect mirror
+                        base_matrix[half_height:, :] = np.flipud(source_region)
+                    else:
+                        # Odd height - mirror the maximum possible
+                        mirrored = np.flipud(source_region)
+                        base_matrix[-half_height:, :] = mirrored
+                
+        elif global_level == 2:
+            # Quadrant symmetry
+            half_height = base_matrix.shape[0] // 2
+            half_width = base_matrix.shape[1] // 2
+            
+            if half_height > 0 and half_width > 0:
+                # Clear all target regions first to avoid fragments
+                base_matrix[:, half_width:] = 0  # Right half
+                base_matrix[half_height:, :half_width] = 0  # Bottom left
+                base_matrix[half_height:, half_width:] = 0  # Bottom right
+                
+                # Get source quadrant
+                top_left = original_matrix[:half_height, :half_width]
+                
+                # Apply to all quadrants
+                base_matrix[:half_height, :half_width] = top_left
+                
+                # Handle right quadrants
+                if base_matrix.shape[1] - half_width == half_width:
+                    base_matrix[:half_height, half_width:] = np.fliplr(top_left)
+                else:
+                    base_matrix[:half_height, -half_width:] = np.fliplr(top_left)
+                
+                # Handle bottom quadrants  
+                if base_matrix.shape[0] - half_height == half_height:
+                    base_matrix[half_height:, :half_width] = np.flipud(top_left)
+                    if base_matrix.shape[1] - half_width == half_width:
+                        base_matrix[half_height:, half_width:] = np.flipud(np.fliplr(top_left))
+                    else:
+                        base_matrix[half_height:, -half_width:] = np.flipud(np.fliplr(top_left))
+                else:
+                    base_matrix[-half_height:, :half_width] = np.flipud(top_left)
+                    base_matrix[-half_height:, -half_width:] = np.flipud(np.fliplr(top_left))
+        
+        # Reassign room IDs to ensure uniqueness
+        return self.reassign_room_ids(base_matrix)
+    
+    def reassign_room_ids(self, base_matrix):
+        """Assign unique IDs to each connected component."""
+        try:
+            from scipy.ndimage import label
+        except ImportError:
+            # Fallback without scipy
+            return self.reassign_room_ids_manual(base_matrix)
+        
+        import numpy as np
+        new_matrix = np.full_like(base_matrix, -1)
+        current_id = 1
+        
+        # Process each unique room ID separately
+        unique_room_ids = np.unique(base_matrix)
+        for room_id in unique_room_ids:
+            if room_id <= 0:  # Skip walls (-1) and empty spaces (0)
+                continue
+            
+            # Create mask for this specific room ID
+            room_mask = (base_matrix == room_id).astype(int)
+            
+            # Find connected components for this room
+            labeled, num_components = label(room_mask)
+            
+            # Assign new unique IDs to each component of this room
+            for i in range(1, num_components + 1):
+                component_mask = (labeled == i)
+                new_matrix[component_mask] = current_id
+                current_id += 1
+        
+        # Preserve walls and empty spaces
+        new_matrix[base_matrix == -1] = -1
+        new_matrix[base_matrix == 0] = 0
+        
+        return new_matrix
+    
+    def reassign_room_ids_manual(self, base_matrix):
+        """Manual room ID reassignment without scipy."""
+        import numpy as np
+        new_matrix = np.full_like(base_matrix, -1)
+        current_id = 1
+        
+        def flood_fill(matrix, start_i, start_j, target_value):
+            visited = np.zeros_like(matrix, dtype=bool)
+            stack = [(start_i, start_j)]
+            cells = []
+            
+            while stack:
+                i, j = stack.pop()
+                if (i < 0 or i >= matrix.shape[0] or 
+                    j < 0 or j >= matrix.shape[1] or
+                    visited[i, j] or matrix[i, j] != target_value):
+                    continue
+                
+                visited[i, j] = True
+                cells.append((i, j))
+                
+                # Add neighbors
+                stack.extend([(i-1, j), (i+1, j), (i, j-1), (i, j+1)])
+            
+            return cells, visited
+        
+        # Process each unique room ID separately
+        unique_room_ids = np.unique(base_matrix)
+        for room_id in unique_room_ids:
+            if room_id <= 0:  # Skip walls (-1) and empty spaces (0)
+                continue
+            
+            # Create a copy to track processed cells for this room
+            room_matrix = base_matrix.copy()
+            global_visited = np.zeros_like(base_matrix, dtype=bool)
+            
+            # Find connected components for this specific room ID
+            for i in range(base_matrix.shape[0]):
+                for j in range(base_matrix.shape[1]):
+                    if (base_matrix[i, j] == room_id and not global_visited[i, j]):
+                        # Found a new connected component of this room
+                        cells, local_visited = flood_fill(room_matrix, i, j, room_id)
+                        
+                        # Mark these cells with new ID
+                        for cell_i, cell_j in cells:
+                            new_matrix[cell_i, cell_j] = current_id
+                            global_visited[cell_i, cell_j] = True
+                        
+                        current_id += 1
+        
+        # Preserve walls and empty spaces
+        new_matrix[base_matrix == -1] = -1
+        new_matrix[base_matrix == 0] = 0
+        
+        return new_matrix
 
 
     def generate_graph_from_base_matrix(self, base_matrix, add_noise = False, add_multiview = False):
@@ -1541,7 +1769,6 @@ class SyntheticDatasetGenerator():
             self,
             graph: GraphWrapper,
             save_dir: Optional[str] = None,
-            seed: Optional[int] = None,
             include_init: bool = True,
             return_sequence: bool = False,
             save_filename: str = "deconstruction_sequence.pkl",
@@ -1577,7 +1804,10 @@ class SyntheticDatasetGenerator():
         inc_graph = GraphWrapper(graph_obj=nx_concrete)
         nxg = inc_graph.graph
 
-        rng = random.Random(seed)
+        if self.seed:
+            rng = random.Random(self.seed)
+        else:
+            rng = random.Random()
 
         # prep save location
         out_dir = None
