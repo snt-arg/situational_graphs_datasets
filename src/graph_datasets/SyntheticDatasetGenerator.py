@@ -282,7 +282,10 @@ class SyntheticDatasetGenerator():
         """Apply global symmetries and ensure unique room IDs."""
         if global_level == 0:
             return base_matrix  # No symmetries applied
-            
+        
+        # Ensure integer dtype throughout the process
+        import numpy as np
+        base_matrix = base_matrix.astype(int) 
         original_matrix = base_matrix.copy()
         
         if global_level == 1:
@@ -355,6 +358,9 @@ class SyntheticDatasetGenerator():
                     base_matrix[-half_height:, :half_width] = np.flipud(top_left)
                     base_matrix[-half_height:, -half_width:] = np.flipud(np.fliplr(top_left))
         
+        # Ensure matrix remains integer type before reassignment
+        base_matrix = base_matrix.astype(int)
+        
         # Reassign room IDs to ensure uniqueness
         return self.reassign_room_ids(base_matrix)
     
@@ -367,7 +373,9 @@ class SyntheticDatasetGenerator():
             return self.reassign_room_ids_manual(base_matrix)
         
         import numpy as np
-        new_matrix = np.full_like(base_matrix, -1)
+        # Ensure integer dtype to prevent float precision issues
+        base_matrix = base_matrix.astype(int)
+        new_matrix = np.full_like(base_matrix, -1, dtype=int)
         current_id = 1
         
         # Process each unique room ID separately
@@ -388,16 +396,20 @@ class SyntheticDatasetGenerator():
                 new_matrix[component_mask] = current_id
                 current_id += 1
         
-        # Preserve walls and empty spaces
-        new_matrix[base_matrix == -1] = -1
-        new_matrix[base_matrix == 0] = 0
+        # Preserve walls and empty spaces with explicit values
+        wall_mask = (base_matrix == -1)
+        empty_mask = (base_matrix == 0)
+        new_matrix[wall_mask] = -1
+        new_matrix[empty_mask] = 0
         
         return new_matrix
     
     def reassign_room_ids_manual(self, base_matrix):
         """Manual room ID reassignment without scipy."""
         import numpy as np
-        new_matrix = np.full_like(base_matrix, -1)
+        # Ensure integer dtype 
+        base_matrix = base_matrix.astype(int)
+        new_matrix = np.full_like(base_matrix, -1, dtype=int)
         current_id = 1
         
         def flood_fill(matrix, start_i, start_j, target_value):
@@ -427,7 +439,6 @@ class SyntheticDatasetGenerator():
                 continue
             
             # Create a copy to track processed cells for this room
-            room_matrix = base_matrix.copy()
             global_visited = np.zeros_like(base_matrix, dtype=bool)
             
             # Find connected components for this specific room ID
@@ -435,7 +446,7 @@ class SyntheticDatasetGenerator():
                 for j in range(base_matrix.shape[1]):
                     if (base_matrix[i, j] == room_id and not global_visited[i, j]):
                         # Found a new connected component of this room
-                        cells, local_visited = flood_fill(room_matrix, i, j, room_id)
+                        cells, local_visited = flood_fill(base_matrix, i, j, room_id)
                         
                         # Mark these cells with new ID
                         for cell_i, cell_j in cells:
@@ -444,9 +455,11 @@ class SyntheticDatasetGenerator():
                         
                         current_id += 1
         
-        # Preserve walls and empty spaces
-        new_matrix[base_matrix == -1] = -1
-        new_matrix[base_matrix == 0] = 0
+        # Preserve walls and empty spaces with explicit integer values
+        wall_mask = (base_matrix == -1)
+        empty_mask = (base_matrix == 0)
+        new_matrix[wall_mask] = -1
+        new_matrix[empty_mask] = 0
         
         return new_matrix
 
@@ -467,11 +480,14 @@ class SyntheticDatasetGenerator():
         ### Rooms
         room_ids = np.unique(base_matrix)
         room_ids = np.delete(room_ids, np.where(room_ids == -1))
+        room_id_to_node_id = {}  # Mapping from base_matrix room_id to graph node_id
+        
         for base_matrix_room_id in room_ids:
             occurrencies = np.argwhere(np.where(base_matrix == base_matrix_room_id, True, False))
             limits = [occurrencies[0],occurrencies[-1]]
             room_entry_size = [limits[1][0] - limits[0][0] + 1, limits[1][1] - limits[0][1] + 1]
             node_ID = max(graph.get_nodes_ids(), default=-1) + 1
+            room_id_to_node_id[base_matrix_room_id] = node_ID  # Store mapping
             room_center = np.array([room_center_distances[0]*(limits[0][0] + (room_entry_size[0]-1)/2), room_center_distances[1]*(limits[0][1]+(room_entry_size[1]-1)/2), 0])
             room_orientation_angle = 0.0
             room_area = [room_center_distances[0]*room_entry_size[0] - wall_thickness/2, room_center_distances[1]*room_entry_size[1] - wall_thickness/2, 0]
@@ -571,17 +587,21 @@ class SyntheticDatasetGenerator():
                     compared_ij = [i + ij_difference[0], j + ij_difference[1]]
                     current_room_id = base_matrix[i,j]
                     comparison = np.array(base_matrix.shape) > np.array(compared_ij)
-                    if current_room_id != -1.0 and comparison.all() and current_room_id != base_matrix[compared_ij[0],compared_ij[1]]:
+                    if current_room_id > 0 and comparison.all() and current_room_id != base_matrix[compared_ij[0],compared_ij[1]]:
                         compared_room_id = base_matrix[compared_ij[0],compared_ij[1]]
-                        if compared_room_id != -1.0 and (current_room_id, compared_room_id) not in explored_walls:
+                        if compared_room_id > 0 and (current_room_id, compared_room_id) not in explored_walls:
                             explored_walls.append((current_room_id, compared_room_id))
                             graph.to_directed()
-                            current_room_neigh = graph.get_neighbourhood_graph(current_room_id-1).filter_graph_by_node_types(["ws"])
+                            # Use mapping to get correct node IDs
+                            current_node_id = room_id_to_node_id[current_room_id]
+                            compared_node_id = room_id_to_node_id[compared_room_id]
+                            
+                            current_room_neigh = graph.get_neighbourhood_graph(current_node_id).filter_graph_by_node_types(["ws"])
                             current_room_neigh_ws_id = list(current_room_neigh.filter_graph_by_node_attributes({"canonic_normal_index" : ij_difference_3D}).get_nodes_ids())[0]
                             current_room_neigh_ws_center = current_room_neigh.get_attributes_of_node(current_room_neigh_ws_id)["center"]
 
-                            compared_room_neigh = graph.get_neighbourhood_graph(compared_room_id-1).filter_graph_by_node_types(["ws"])
-                            compared_room_neigh = graph.get_neighbourhood_graph(compared_room_id-1).filter_graph_by_node_types(["ws"])
+                            compared_room_neigh = graph.get_neighbourhood_graph(compared_node_id).filter_graph_by_node_types(["ws"])
+                            compared_room_neigh = graph.get_neighbourhood_graph(compared_node_id).filter_graph_by_node_types(["ws"])
                             ij_difference_3D_oppposite = list(-1*np.array(ij_difference_3D))
                             compared_room_neigh_ws_id = list(compared_room_neigh.filter_graph_by_node_attributes({"canonic_normal_index" : ij_difference_3D_oppposite}).get_nodes_ids())[0]
                             compared_room_neigh_ws_center = compared_room_neigh.get_attributes_of_node(compared_room_neigh_ws_id)["center"]

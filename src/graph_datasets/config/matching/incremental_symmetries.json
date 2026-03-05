@@ -73,7 +73,7 @@
             ]},
             {"pp_name": "to_undirected"},
             {"pp_name": "add_random_objects", "max": {"room":2, "door":1, "window":2}, "distrib": "log"},
-            {"pp_name": "filter", "nodes": ["ws", "room","object"], "edges":[
+            {"pp_name": "filter", "nodes": ["ws", "room","object","wall"], "edges":[
                 [
                     "ws",
                     "training",
@@ -122,7 +122,6 @@
         "final": [
             {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
             {"pp_name": "remove_self_loops"}
-            
         ]
     },
     "initial_features": {
