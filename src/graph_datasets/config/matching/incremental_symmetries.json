@@ -2,16 +2,16 @@
     "source" : {
         "type": "synthetic",
         "base_graphs": {
-            "grid_dims" : [[70,200],[70,200]],
+            "grid_dims" : [[70,150],[70,150]],
             "playground_size": [100, 100],
             "max_room_entry_size" : [100,100],
-            "min_room_entry_size" : [10,10],
+            "min_room_entry_size" : [50,50],
             "room_center_distances" : [0.1,0.1],
             "wall_thickness" : [0.16,0.2],
             "n_buildings" : 3000,
             "symmetries": {
-                "local_level": 0,
-                "global_level": 2
+                "local_level": 3,
+                "global_level": 0
             }
         }
     },
@@ -115,7 +115,7 @@
             
         ],
         "s_graphs":[
-            {"pp_name": "add_global_noise", "translation": 0, "rotation": 0.0},
+            {"pp_name": "add_global_noise", "translation": 15, "rotation": 0.0},
             {"pp_name": "update_viz"},
             {"pp_name": "upgrade_objects_type"}
         ],

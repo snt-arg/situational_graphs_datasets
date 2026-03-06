@@ -195,30 +195,28 @@ class SyntheticDatasetGenerator():
         min_room_entry_size = np.random.randint(base_graph_settings["min_room_entry_size"][0], base_graph_settings["min_room_entry_size"][1] + 1)
         
         # Check for room symmetries configuration
-        room_similar_dimensions = base_graph_settings.get("symmetries", {}).get("room_similar_dimensions", 0)
+        room_similar_dimensions = base_graph_settings.get("symmetries", {}).get("local_level", 0)
         
         # Generate shared dimensions if symmetries are enabled
         shared_dim_x = None
         shared_dim_y = None
         
         if room_similar_dimensions >= 1:
-            # Generate shared dimension(s)
             if room_similar_dimensions == 1:
-                # Choose randomly whether to share x or y dimension
-                share_x = np.random.choice([True, False])
-                if share_x:
+                # One axis fixed randomly, the other remains free (random per room)
+                if np.random.choice([True, False]):
                     shared_dim_x = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
                 else:
                     shared_dim_y = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
             elif room_similar_dimensions == 2:
-                # Share both dimensions with the same value (square rooms)
+                # Both axes fixed but with independently chosen values (rectangular rooms)
+                shared_dim_x = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
+                shared_dim_y = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
+            elif room_similar_dimensions == 3:
+                # Both axes fixed to the same value (square rooms)
                 shared_dim = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
                 shared_dim_x = shared_dim
                 shared_dim_y = shared_dim
-            elif room_similar_dimensions == 3:
-                # Share both dimensions but with different values
-                shared_dim_x = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
-                shared_dim_y = np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1)
         
         ### Base matrix
         base_matrix = np.zeros(grid_dims)
@@ -255,17 +253,20 @@ class SyntheticDatasetGenerator():
                         else:
                             dim_y = min(remaining[1], np.random.randint(low=min_room_entry_size, high=max_room_entry_size+1, size=(1))[0])
                         
-                        # Only create room if both dimensions fit (or are not constrained by symmetry)
+                        # Only create room if both dimensions fit - skip cell entirely if not
                         if dim_x is not None and dim_y is not None:
+                            # Also verify the entire rectangle is free (remaining only checks 1 row/col)
+                            if np.any(base_matrix[i:i+dim_x, j:j+dim_y] != 0):
+                                continue  # Rectangle not fully free, skip
                             room_entry_size = [dim_x, dim_y]
                         else:
-                            room_entry_size = [1, 1]  # Will be marked as -1 (no room) due to size constraint
+                            continue  # Leave cell as 0 (unprocessed), do not mark as wall
 
                     if (room_entry_size[0] >= min_room_entry_size) & (room_entry_size[1] >= min_room_entry_size):
                         room_id = room_n
                         room_n += 1
                     else:
-                        room_id = -1
+                        room_id = 0
                     for ii in range(room_entry_size[0]):
                         for jj in range(room_entry_size[1]):
                             base_matrix[i+ii, j+jj] = room_id
@@ -479,7 +480,7 @@ class SyntheticDatasetGenerator():
 
         ### Rooms
         room_ids = np.unique(base_matrix)
-        room_ids = np.delete(room_ids, np.where(room_ids == -1))
+        room_ids = room_ids[room_ids > 0]  # Exclude 0 (empty space) and -1 (walls)
         room_id_to_node_id = {}  # Mapping from base_matrix room_id to graph node_id
         
         for base_matrix_room_id in room_ids:

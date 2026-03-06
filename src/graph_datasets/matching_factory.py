@@ -17,12 +17,12 @@ factory = DatasetFactory(
     dataset_base="synthetic",
     config_name="matching/incremental_symmetries",
     extension_name="original",
-    pickle_name="matching/incremental_symmetries.pkl",
+    pickle_name="matching/incremental_symmetries_grid_squared_translation.pkl",
     n_graphs_reduction=5
 )
 
 visualize = True
-save_pickle = False
+save_pickle = True
 
 # Run with visualization and saving
 """Run the complete dataset creation pipeline."""
