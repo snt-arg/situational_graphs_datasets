@@ -50,11 +50,12 @@ class SyntheticDatasetGenerator():
         self.report_path = report_path
         self.dataset_name = dataset_name
 
-        if seed:
-            random.seed(seed)
-            os.environ['PYTHONHASHSEED'] = str(seed)
-            np.random.seed(seed)
+        if seed is None:
+            seed = random.randint(0, 2**32 - 1)
         self.seed = seed
+        random.seed(seed)
+        os.environ['PYTHONHASHSEED'] = str(seed)
+        np.random.seed(seed)
 
         # dynamic save dir (either from settings or relative to file path)
         if "save_dir" in self.settings:
@@ -160,8 +161,21 @@ class SyntheticDatasetGenerator():
         print(f"SyntheticDatasetGenerator: ", Fore.GREEN + "Generating Syntetic Dataset" + Fore.WHITE)
         n_buildings = self.settings["source"]["base_graphs"]["n_buildings"]
 
-        def process_building(_):
-            base_matrix = self.generate_base_matrix()
+        symmetry_settings = self.settings["source"]["base_graphs"].get("symmetries", {})
+        local_schedule = self._build_balanced_level_schedule(
+            symmetry_settings.get("local_level", 0),
+            n_buildings,
+        )
+        global_schedule = self._build_balanced_level_schedule(
+            symmetry_settings.get("global_level", 0),
+            n_buildings,
+        )
+
+        def process_building(building_idx):
+            base_matrix = self.generate_base_matrix(
+                local_level=local_schedule[building_idx],
+                global_level=global_schedule[building_idx],
+            )
             # original_graph = self.generate_graph_from_base_matrix(base_matrix, add_noise=False)
             original_graph = self.generate_graph_from_base_matrix(base_matrix, add_noise=False)
             noisy_graph = self.generate_graph_from_base_matrix(base_matrix, add_noise=True)
@@ -187,15 +201,42 @@ class SyntheticDatasetGenerator():
         # plt.show()
         # time.sleep(999)
 
-    def generate_base_matrix(self):
+    def _normalize_symmetry_levels(self, level_setting):
+        if isinstance(level_setting, (list, tuple)):
+            levels = [int(l) for l in level_setting]
+            if len(levels) == 0:
+                levels = [0]
+        else:
+            levels = [int(level_setting)]
+
+        # Keep order stable but remove duplicates.
+        levels = list(dict.fromkeys(levels))
+        return levels
+
+    def _build_balanced_level_schedule(self, level_setting, n_samples):
+        levels = self._normalize_symmetry_levels(level_setting)
+        if len(levels) == 1:
+            return [levels[0]] * n_samples
+
+        # Balanced assignment: counts differ by at most 1.
+        schedule = [levels[i % len(levels)] for i in range(n_samples)]
+        random.shuffle(schedule)
+        return schedule
+
+    def generate_base_matrix(self, local_level=None, global_level=None):
         base_graph_settings = self.settings["source"]["base_graphs"]
         grid_dims = [np.random.randint(base_graph_settings["grid_dims"][0][0], base_graph_settings["grid_dims"][0][1] + 1),
                      np.random.randint(base_graph_settings["grid_dims"][1][0], base_graph_settings["grid_dims"][1][1] + 1)]
         max_room_entry_size = np.random.randint(base_graph_settings["max_room_entry_size"][0], base_graph_settings["max_room_entry_size"][1] + 1)
         min_room_entry_size = np.random.randint(base_graph_settings["min_room_entry_size"][0], base_graph_settings["min_room_entry_size"][1] + 1)
-        
+    
         # Check for room symmetries configuration
-        room_similar_dimensions = base_graph_settings.get("symmetries", {}).get("local_level", 0)
+        if local_level is None:
+            configured_local = base_graph_settings.get("symmetries", {}).get("local_level", 0)
+            local_candidates = self._normalize_symmetry_levels(configured_local)
+            room_similar_dimensions = int(random.choice(local_candidates))
+        else:
+            room_similar_dimensions = int(local_level)
         
         # Generate shared dimensions if symmetries are enabled
         shared_dim_x = None
@@ -273,7 +314,12 @@ class SyntheticDatasetGenerator():
         self.max_n_rooms = max(self.max_n_rooms, room_n)
         
         # Apply global symmetries if enabled
-        global_level = base_graph_settings.get("symmetries", {}).get("global_level", 0)
+        if global_level is None:
+            configured_global = base_graph_settings.get("symmetries", {}).get("global_level", 0)
+            global_candidates = self._normalize_symmetry_levels(configured_global)
+            global_level = int(random.choice(global_candidates))
+        else:
+            global_level = int(global_level)
         if global_level > 0:
             base_matrix = self.apply_global_symmetries(base_matrix, global_level)
         
@@ -2514,6 +2560,9 @@ class SyntheticDatasetGenerator():
 
             elif pp_settings["pp_name"] == "upgrade_objects_type":
                 working_graph = working_graph.upgrade_objects_type()
+
+            elif pp_settings["pp_name"] == "adapt_from_ifh_dataset":
+                working_graph = working_graph.adapt_from_ifh_dataset()
 
             return working_graph
 

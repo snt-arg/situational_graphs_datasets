@@ -1,0 +1,158 @@
+{   
+    "source" : {
+        "type": "disk",
+        "folder_path": "/media/adminpc/X9 Pro/Papers/ICML 2026/public_dataset/graphs/GT-test/S/S-F.pkl",
+        "limit" : 64,
+        "base_graphs": {
+            "grid_dims" : [[50,100],[50,100]],
+            "playground_size": [100, 100],
+            "max_room_entry_size" : [75,75],
+            "min_room_entry_size" : [10,10],
+            "room_center_distances" : [0.1,0.1],
+            "wall_thickness" : [0.16,0.2],
+            "n_buildings" : 256
+        }
+    },
+    "noise":{
+        "global":{
+            "active": true,
+            "translation": 0,
+            "rotation": 1.0
+        },
+        "room": {
+            "active": true,
+            "translation": 0.01,
+            "rotation": 0.003
+        },
+        "ws": {
+            "active": true,
+            "rotation": 0.012
+        }
+    },
+    "multiview": {
+        "number":2,
+        "overlapping": 2
+    },
+    "training_split": {
+        "val" : 0.1,
+        "test" : 0.1
+    },
+    "postprocess": {
+        "training": [
+            {"pp_name": "merge_room", "ratio": 0.7},
+            {"pp_name": "update_viz"},
+            {"pp_name": "unfreeze"},
+            {"pp_name": "remove_self_loops"},
+            {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
+                [
+                    "ws",
+                    "ws_belongs_room",
+                    "room"
+                ],[
+                    "ws",
+                    "ws_belongs_wall",
+                    "wall"
+                ],[
+                    "room",
+                    "room_belongs_floor",
+                    "floor"
+                ]
+            ]},
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
+            {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
+                [
+                    "ws",
+                    "training",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_same_wall",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_same_room",
+                    "ws"
+                ],[
+                    "ws",
+                    "ws_belongs_room",
+                    "room"
+                ],[
+                    "ws",
+                    "ws_belongs_wall",
+                    "wall"
+                ],[
+                    "room",
+                    "room_belongs_floor",
+                    "floor"
+                ]
+            ]},
+            {"pp_name": "dropout", "room": 0.0, "ws":0.0},
+            {"pp_name": "add_floor_node"},
+            {"pp_name": "merge_edge_types", "common_type":"common"},
+            {"pp_name": "to_undirected"}
+        ],
+        "final": [
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
+            {"pp_name": "remove_self_loops"}
+            
+        ],
+        "gt": [
+            {"pp_name": "adapt_from_ifh_dataset"},
+            {"pp_name": "merge_room", "ratio": 0.0},
+            {"pp_name": "update_viz"},
+            {"pp_name": "unfreeze"},
+            {"pp_name": "remove_self_loops"},
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":true},
+            {"pp_name": "filter", "nodes": ["ws", "room", "wall", "floor"], "edges":[
+                [
+                    "ws",
+                    "training",
+                    "ws"
+                ],[
+                    "ws",
+                    "training",
+                    "ws"
+                ],[
+                    "ws",
+                    "training",
+                    "ws"
+                ],[
+                    "ws",
+                    "training",
+                    "room"
+                ],[
+                    "ws",
+                    "training",
+                    "wall"
+                ],[
+                    "room",
+                    "training",
+                    "floor"
+                ]
+            ]},
+            {"pp_name": "dropout", "room": 0.0, "wall": 0.0,"ws":0.0, "propagate": false, "remove_lower": false},
+            {"pp_name": "merge_edge_types", "common_type":"common"},
+            {"pp_name": "to_undirected"},
+            {"pp_name": "add_x"}
+        ],
+        "initial": [
+            {"pp_name": "adapt_from_ifh_dataset"},
+            {"pp_name": "merge_room", "ratio": 0.0},
+            {"pp_name": "unfreeze"},
+            {"pp_name": "remove_self_loops"},
+            {"pp_name": "filter", "nodes": ["ws"], "edges":[]},
+            {"pp_name": "K_near_neigh", "max": 10, "types":["ws"], "use_gt":false},
+            {"pp_name": "add_x"},
+            {"pp_name": "update_viz"}
+        ]
+    },
+    "initial_features": {
+        "nodes": {
+            "ws": ["length"], "room":"center", "wall":"center", "floor":"center"
+        },
+        "edges": {
+            "[ws,ws]": ["centroids_distance", "angle_centroid_degrees", "relative_ang_normal"]
+        }
+    }
+}
+
