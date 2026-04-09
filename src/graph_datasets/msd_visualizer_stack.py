@@ -7,7 +7,8 @@ from graph_wrapper.GraphWrapper import GraphWrapper
 
 from graph_datasets.config import get_config as get_datasets_config
 
-dataset = "synthetic"  # synthetic, msd, or disk
+dataset = "disk"  # synthetic, msd, or disk
+dataset_config = "kim/msd_buildings_objects_kim"  # config name for disk dataset (e.g., "disk/kim/disk_10k_nodes")
 viz_lim = 3  # limit for visualizations (specifically for msd & disk)
 
 if dataset == "synthetic":
@@ -34,7 +35,7 @@ elif dataset == "msd":
     print(f"dbg len(all_dataset) {len(all_dataset)}")
 
 elif dataset == "disk":
-    synteticdataset_settings = get_datasets_config("disk")
+    synteticdataset_settings = get_datasets_config(dataset_config)
     dataset_generator = SyntheticDatasetGenerator(synteticdataset_settings, logger = None, report_path = "???", dataset_name = "test")
 
     visualized_graphs = dataset_generator.graphs["original"][:viz_lim]  # same as msd, only visualize subset of full data pool
@@ -48,13 +49,8 @@ elif dataset == "disk":
         all_dataset = visualized_graphs
 
 for graph in all_dataset:
-    # node_types = graph.get_all_node_types()
-    # print(f"dbg type(graph) {type(graph)}")
-    # print(f'dbg node_types {node_types}')
-    # if "door" in node_types:
-    #     print(f'dbg door in node types!')
     if type(graph) == GraphWrapper:
-        visualize_nxgraph_3d(graph, "train data", visualize_alone=True, include_node_ids=False)
+        visualize_nxgraph_3d(graph, "test", visualize_alone=True, include_node_ids=False, add_legend=True)
         plt.show()
     elif type(graph) == list:
         print(f'dbg new sequence of graphs of length {len(graph)}')
@@ -66,5 +62,5 @@ for graph in all_dataset:
             print(blocking)
 
             if type(graph_i) == GraphWrapper:
-                visualize_nxgraph_3d(graph_i, f"train data {i}", visualize_alone=True, include_node_ids=False, blocking=blocking)
+                visualize_nxgraph_3d(graph_i, f"test {i}", visualize_alone=True, include_node_ids=False, blocking=blocking, add_legend=True, show_hover_tooltips=True,zoom_factor=0.5)
                 # plt.show()

@@ -187,14 +187,13 @@ class DatasetFactory:
 # if __name__ == "__main__":
 #     # Default configuration
 #     factory = DatasetFactory(
-#         dataset_base="synthetic",
-#         config_name="matching/incremental",
+#         dataset_base="msd",
+#         config_name="kim/msd_buildings_objects",
 #         extension_name="original",
-#         pickle_name="matching/incremental.pkl",
-#         n_graphs_reduction=5
+#         pickle_name="kim/msd_buildings_objects.pkl",
+#         n_graphs_reduction=50
 #     )
     
-#     # Run with visualization and saving
-#     all_dataset = factory.run(visualize=True, save_pickle=False)
+#     all_dataset = factory.run(visualize=False, save_pickle=True)
 
 
