@@ -547,6 +547,7 @@ class InteractiveGraphVisualizer:
             "=========================\n"
             "L-Click    : Select Node\n"
             "Shift+R      : Create Room (from Selection)\n"
+            "Shift+E   : Create Edge (between 2 nodes)\n"
             "Shift+F   : Create Floor\n"
             "Shift+B  : Create Building\n"
             "Shift+C  : Create City\n"
@@ -977,6 +978,64 @@ class InteractiveGraphVisualizer:
                 self.logger.info("No nodes selected to delete.")
             return
 
+    def create_edge_between_selected(self):
+        """
+        Creates an edge between exactly two selected nodes (no features).
+        """
+        if self.full_graph is None:
+            if self.logger:
+                self.logger.error("No graph available")
+            return
+        
+        # Collect selected node IDs from current group
+        selected_ids = list(self.active_groups.get(self.current_group_type, set()))
+        
+        if self.logger:
+            self.logger.info(f"Shift+E pressed. Selected nodes in group '{self.current_group_type}': {selected_ids}")
+        
+        if len(selected_ids) != 2:
+            if self.logger:
+                self.logger.info(f"Please select exactly 2 nodes. Currently selected: {len(selected_ids)}")
+            return
+        
+        node_a, node_b = selected_ids
+        
+        # Create edge with minimal features (no feature attributes)
+        edge = [(node_a, node_b, {
+            "type": "manual_edge",
+            "viz_feat": "b-",  # blue solid line
+            "linewidth": 1.0,
+            "alpha": 0.8,
+        })]
+        
+        try:
+            # Add to full graph
+            self.full_graph.add_edges(edge)
+            
+            # Add to visualization graph if different
+            if self.graph is not None and self.graph != self.full_graph:
+                try:
+                    # Check if both nodes exist in visualization graph
+                    viz_node_ids = set(self.graph.get_nodes_ids())
+                    if node_a in viz_node_ids and node_b in viz_node_ids:
+                        self.graph.add_edges(edge)
+                except Exception as e:
+                    if self.logger:
+                        self.logger.warning(f"Could not add edge to visualization graph: {e}")
+            
+            if self.logger:
+                self.logger.info(f"Created edge between nodes {node_a} and {node_b}")
+            
+            # Clear selection and redraw
+            self.active_groups[self.current_group_type] = set()
+            self.update_selection()
+            self.draw_graph(preserve_view=True)
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Error creating edge: {e}")
+            import traceback
+            traceback.print_exc()
+
     def manual_create_hierarchy_node(self, node_type):
         """
         Creates any type node connecting to the currently selected node
@@ -1158,6 +1217,11 @@ class InteractiveGraphVisualizer:
             self.save_graph()
             if self.logger:
                 self.logger.info(f"Saving graph...")
+            return
+        
+        # create edge between selected nodes
+        if event.key == "E":  # Shift + e to create edge between two selected nodes
+            self.create_edge_between_selected()
             return
         
         # Navigation keys for z levels
@@ -1369,7 +1433,14 @@ class InteractiveGraphVisualizer:
 
             if "center" in attrs:
                 geom_center = np.array(attrs["center"], dtype=float)
-                offset = self.viz_center_offsets.get(ntype, np.array([0,0,0]))
+                offset = np.array(self.viz_center_offsets.get(ntype, np.array([0,0,0])), dtype=float)
+                
+                # Ensure both have same dimensions
+                if len(geom_center) < len(offset):
+                    geom_center = np.pad(geom_center, (0, len(offset) - len(geom_center)))
+                elif len(offset) < len(geom_center):
+                    offset = np.pad(offset, (0, len(geom_center) - len(offset)))
+                
                 viz.setdefault("center", geom_center + offset)
 
             if "feat" not in viz and "viz_feat" in attrs:

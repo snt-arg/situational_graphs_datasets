@@ -7,8 +7,18 @@ import joblib
 from graph_datasets.InteractiveGraphVisualizer import InteractiveGraphVisualizer as IGV
 from graph_wrapper.GraphWrapper import GraphWrapper as GW
 
+
+class ModuleRemappingUnpickler(pickle.Unpickler):
+    """Custom unpickler that remaps old module names to new ones"""
+    
+    def find_class(self, module, name):
+        # Remap module name: situational_graphs_wrapper -> graph_wrapper
+        if module.startswith("situational_graphs_wrapper"):
+            module = module.replace("situational_graphs_wrapper", "graph_wrapper", 1)
+        return super().find_class(module, name)
+
 # config
-INTERACTIVE_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/ifh/real/JL").expanduser()
+INTERACTIVE_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/nimrod/topfloor_edge_debug ").expanduser()
 OUTPUT_DIR = INTERACTIVE_DATASET_DIR
 LOAD_INDEX = 0  # index to load specific file
 
@@ -18,12 +28,12 @@ logger.setLevel(logging.INFO)
 if not logger.handlers:
     logger.addHandler(logging.StreamHandler())
 
-def load_and_sanitize_graph(idx: int) -> GW:
+def load_and_sanitize_graph(idx: int = None) -> GW:
     """
     Loads a graph from a pkl file and re-wraps it to ensure GW class consistency
 
     Args:
-        idx -> Int: Index of pkl file to load
+        idx -> Int: Index of pkl file to load. If None, user will be prompted to select.
     """
     selected = OUTPUT_DIR
 
@@ -35,6 +45,18 @@ def load_and_sanitize_graph(idx: int) -> GW:
     print("Available Files: ")
     for i, p in enumerate(pkl_files):
         print(f" [{i}] {p.name}")
+
+    # If idx not provided, ask user to select
+    if idx is None:
+        while True:
+            try:
+                idx = int(input(f"\nSelect file index (0-{len(pkl_files)-1}): "))
+                if 0 <= idx < len(pkl_files):
+                    break
+                else:
+                    print(f"Invalid index. Please enter a number between 0 and {len(pkl_files)-1}")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
 
     if idx >= len(pkl_files):
         print(f"Index {idx} out of range, loading last file")
@@ -49,7 +71,7 @@ def load_and_sanitize_graph(idx: int) -> GW:
 
     else:
         with open(chosen, "rb") as f:
-            loaded_data = pickle.load(f)
+            loaded_data = ModuleRemappingUnpickler(f).load()
 
     # handle sdg data
     raw_graph_obj = None
@@ -73,8 +95,8 @@ def load_and_sanitize_graph(idx: int) -> GW:
     
 
 def main():
-    # load 
-    graph = load_and_sanitize_graph(LOAD_INDEX)
+    # load - prompts user to select file from available pkl files
+    graph = load_and_sanitize_graph()
 
     # debug
     # print(f"Node Types in Graph: {graph.get_all_node_types()}")
