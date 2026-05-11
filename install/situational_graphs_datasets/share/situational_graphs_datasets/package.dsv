@@ -1,0 +1,9 @@
+source;share/situational_graphs_datasets/hook/pythonpath.ps1
+source;share/situational_graphs_datasets/hook/pythonpath.dsv
+source;share/situational_graphs_datasets/hook/pythonpath.sh
+source;share/situational_graphs_datasets/hook/ament_prefix_path.ps1
+source;share/situational_graphs_datasets/hook/ament_prefix_path.dsv
+source;share/situational_graphs_datasets/hook/ament_prefix_path.sh
+source;../../build/situational_graphs_datasets/share/situational_graphs_datasets/hook/pythonpath_develop.ps1
+source;../../build/situational_graphs_datasets/share/situational_graphs_datasets/hook/pythonpath_develop.dsv
+source;../../build/situational_graphs_datasets/share/situational_graphs_datasets/hook/pythonpath_develop.sh
