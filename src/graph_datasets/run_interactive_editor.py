@@ -18,7 +18,7 @@ class ModuleRemappingUnpickler(pickle.Unpickler):
         return super().find_class(module, name)
 
 # config
-INTERACTIVE_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/nimrod/topfloor_edge_debug ").expanduser()
+INTERACTIVE_DATASET_DIR = Path("~/workspaces/reasoning_ws/src/situational_graphs_datasets/datasets/nimrod/basement_edge_debug ").expanduser()
 OUTPUT_DIR = INTERACTIVE_DATASET_DIR
 LOAD_INDEX = 0  # index to load specific file
 

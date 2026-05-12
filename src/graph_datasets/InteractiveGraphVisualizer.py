@@ -92,6 +92,12 @@ class InteractiveGraphVisualizer:
         self.hovered_edge = None  # stores tuple (u,v) on hover
         self.hover_artist = None  # visual overlay 
 
+        # Plane creation mode
+        self.plane_creation_mode = False
+        self.plane_center = None  # will store (x, y, z) when first point is clicked
+        self.plane_creation_artist = None  # visual indicator during creation
+        self.saved_view_state = None  # saves view angle when entering plane creation mode
+
         # gui related
         self.has_qt = False
         self.QtInputDialog = None
@@ -547,6 +553,7 @@ class InteractiveGraphVisualizer:
             "=========================\n"
             "L-Click    : Select Node\n"
             "Shift+R      : Create Room (from Selection)\n"
+            "Shift+P   : Create Plane (click center, then right)\n"
             "Shift+E   : Create Edge (between 2 nodes)\n"
             "Shift+F   : Create Floor\n"
             "Shift+B  : Create Building\n"
@@ -602,6 +609,11 @@ class InteractiveGraphVisualizer:
         else:
             z_level_str += f" | Z-Filter: OFF"
         plt.title(z_level_str)
+        
+        # Add axis labels
+        self.ax.set_xlabel("X", fontsize=10, fontweight='bold', color='red')
+        self.ax.set_ylabel("Y", fontsize=10, fontweight='bold', color='green')
+        self.ax.set_zlabel("Z", fontsize=10, fontweight='bold', color='blue')
 
         self.update_selection()
         self.fig.canvas.draw_idle()
@@ -771,6 +783,11 @@ class InteractiveGraphVisualizer:
         if event.inaxes != self.ax:
             return
         
+        # Handle plane creation mode
+        if self.plane_creation_mode:
+            self._handle_plane_creation_click(event)
+            return
+        
         screen_coords = self._project_coords()
         if len(screen_coords) == 0:
             return
@@ -836,6 +853,201 @@ class InteractiveGraphVisualizer:
         
         # fallback
         return np.array([0.0, 0.0, 0.0])
+    
+    def _project_2d_to_3d(self, event, z=0.0):
+        """Project a 2D mouse click to 3D coordinates on the z=z_target plane.
+        
+        When viewing from top-down (elev=90), uses direct axis mapping.
+        Otherwise uses adaptive grid search.
+        """
+        # Check if we're in top-down view (nearly perpendicular to z-axis)
+        is_topdown = abs(self.ax.elev - 90) < 5  # within 5 degrees of 90
+        
+        if is_topdown:
+            # In top-down view, screen coordinates map directly to data coordinates
+            ax_bbox = self.ax.get_window_extent()
+            xlim = self.ax.get_xlim()
+            ylim = self.ax.get_ylim()
+            
+            # Normalize to [0, 1]
+            norm_x = (event.x - ax_bbox.x0) / ax_bbox.width
+            norm_y = (ax_bbox.y1 - event.y) / ax_bbox.height  # flip Y (screen goes down, data goes up)
+            
+            # Clamp to valid range
+            norm_x = np.clip(norm_x, 0, 1)
+            norm_y = np.clip(norm_y, 0, 1)
+            
+            # Map to data coordinates
+            x_data = xlim[0] + norm_x * (xlim[1] - xlim[0])
+            y_data = ylim[0] + norm_y * (ylim[1] - ylim[0])
+            
+            if self.logger:
+                self.logger.info(f"[TOP-DOWN] Screen ({event.x:.0f}, {event.y:.0f}) -> Data ({x_data:.2f}, {y_data:.2f}, {z:.2f})")
+            
+            return np.array([x_data, y_data, z])
+        
+        else:
+            # For angled views, use adaptive grid search
+            M = self.ax.get_proj()
+            xlim = self.ax.get_xlim()
+            ylim = self.ax.get_ylim()
+            
+            def test_points(x_range, y_range, nx=50, ny=50):
+                """Test a grid of points and return closest to click"""
+                x_test = np.linspace(x_range[0], x_range[1], nx)
+                y_test = np.linspace(y_range[0], y_range[1], ny)
+                
+                best_dist = float('inf')
+                best_point = None
+                
+                for x in x_test:
+                    for y in y_test:
+                        xs, ys, _ = proj3d.proj_transform(x, y, z, M)
+                        screen_coords = self.ax.transData.transform(np.array([[xs, ys]]))[0]
+                        dist = np.sqrt((screen_coords[0] - event.x)**2 + (screen_coords[1] - event.y)**2)
+                        
+                        if dist < best_dist:
+                            best_dist = dist
+                            best_point = (x, y)
+                
+                return best_point, best_dist
+            
+            # Coarse grid search
+            best_point, best_dist = test_points((xlim[0], xlim[1]), (ylim[0], ylim[1]), nx=30, ny=30)
+            
+            # Fine grid refinement around best point
+            if best_point is not None:
+                x_margin = (xlim[1] - xlim[0]) / 30 * 2
+                y_margin = (ylim[1] - ylim[0]) / 30 * 2
+                
+                refined_point, refined_dist = test_points(
+                    (max(xlim[0], best_point[0] - x_margin), min(xlim[1], best_point[0] + x_margin)),
+                    (max(ylim[0], best_point[1] - y_margin), min(ylim[1], best_point[1] + y_margin)),
+                    nx=50, ny=50
+                )
+                
+                best_point = refined_point
+                best_dist = refined_dist
+            
+            if best_point is None:
+                return np.array([0.0, 0.0, z])
+            
+            x_data, y_data = best_point
+            
+            if self.logger:
+                self.logger.info(f"[ANGLED] Screen ({event.x:.0f}, {event.y:.0f}) -> Data ({x_data:.2f}, {y_data:.2f}, {z:.2f}) [err={best_dist:.1f}px]")
+            
+            return np.array([x_data, y_data, z])
+    
+    def _handle_plane_creation_click(self, event):
+        """Handle clicks during plane creation mode"""
+        if event.inaxes != self.ax:
+            if self.logger:
+                self.logger.info("Click outside axes, ignored")
+            return
+            
+        click_3d = self._project_2d_to_3d(event, z=0.0)
+        
+        if self.logger:
+            self.logger.info(f"Plane creation click: screen({event.x}, {event.y}) -> data({click_3d[0]:.2f}, {click_3d[1]:.2f}, {click_3d[2]:.2f})")
+        
+        if self.plane_center is None:
+            # First click: set center
+            self.plane_center = click_3d
+            if self.logger:
+                self.logger.info(f"Plane center set at [{click_3d[0]:.2f}, {click_3d[1]:.2f}, {click_3d[2]:.2f}]. Click again to set right edge.")
+            
+            # Draw a visual indicator
+            if self.plane_creation_artist:
+                self.plane_creation_artist.remove()
+            self.plane_creation_artist = self.ax.scatter(
+                [self.plane_center[0]], [self.plane_center[1]], [self.plane_center[2]],
+                c='yellow', s=300, marker='X', edgecolors='red', linewidth=3, zorder=100
+            )
+            self.fig.canvas.draw_idle()
+        else:
+            # Second click: set right edge and create plane
+            right_point = click_3d
+            
+            # Calculate dimensions
+            center = self.plane_center
+            dx = right_point[0] - center[0]
+            dy = right_point[1] - center[1]
+            
+            if self.logger:
+                self.logger.info(f"Right edge set at [{right_point[0]:.2f}, {right_point[1]:.2f}, {right_point[2]:.2f}]")
+                self.logger.info(f"Plane dimensions: dx={dx:.2f}, dy={dy:.2f}")
+            
+            # Check if the two clicks are too close (might indicate misalignment)
+            dist = np.sqrt(dx**2 + dy**2)
+            if dist < 0.1:
+                if self.logger:
+                    self.logger.warning(f"Clicks too close (dist={dist:.3f}). Plane too small. Canceling.")
+                self.plane_creation_mode = False
+                self.plane_center = None
+                if self.plane_creation_artist:
+                    self.plane_creation_artist.remove()
+                    self.plane_creation_artist = None
+                self.draw_graph(preserve_view=True)
+                return
+            
+            # Left is mirror of right
+            left_offset = np.array([-dx, -dy, 0])
+            
+            # Create plane limits (left, right as points)
+            left_point = center + left_offset
+            right_point_final = center + np.array([dx, dy, 0])
+            
+            limits = np.array([left_point, right_point_final])
+            
+            # Create the plane node
+            self.create_plane_node(center, limits)
+            
+            # Exit plane creation mode
+            self.plane_creation_mode = False
+            self.plane_center = None
+            if self.plane_creation_artist:
+                self.plane_creation_artist.remove()
+                self.plane_creation_artist = None
+            
+            self.draw_graph(preserve_view=True)
+    
+    def create_plane_node(self, center, limits):
+        """Create a new plane node with the given center and limits"""
+        if self.full_graph is None:
+            return
+        
+        # Generate new ID
+        plane_id = self.generate_new_node_id(self.full_graph)
+        
+        # Create plane attributes following existing plane node pattern
+        plane_attr = {
+            "type": "ws",
+            "center": np.array(center, dtype=float),
+            "limits": np.array(limits, dtype=float),
+            "viz": {
+                "type": "Line",
+                "limits": np.array(limits, dtype=float),
+                "feat": "g-",
+            },
+            "viz_type": "Line",
+            "viz_data": np.array(limits, dtype=float),
+            "viz_feat": "g-",
+        }
+        
+        # Add to full graph
+        self.full_graph.add_nodes([(plane_id, plane_attr)])
+        
+        # Add to visualization graph if different
+        if self.graph is not None and self.graph != self.full_graph:
+            try:
+                self.graph.add_nodes([(plane_id, plane_attr)])
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(f"Could not add plane to visualization graph: {e}")
+        
+        if self.logger:
+            self.logger.info(f"Created plane {plane_id} at center {center}")
     
     def create_room_from_planes(self, full_graph, plane_ids, group_type="R"):
         """
@@ -1171,6 +1383,48 @@ class InteractiveGraphVisualizer:
             if self.logger:
                 self.logger.info(f"Toggled control display to {self.show_controls}")
             self.draw_graph(preserve_view=True)
+            return
+
+        # plane creation mode
+        if event.key == "P":  # Shift + p to create plane
+            self.plane_creation_mode = not self.plane_creation_mode
+            if self.plane_creation_mode:
+                self.plane_center = None
+                
+                # Save current view state
+                self.saved_view_state = {
+                    "elev": self.ax.elev,
+                    "azim": self.ax.azim,
+                    "xlim": self.ax.get_xlim(),
+                    "ylim": self.ax.get_ylim(),
+                    "zlim": self.ax.get_zlim(),
+                }
+                
+                # Switch to top-down view for intuitive plane creation
+                self.ax.view_init(elev=90, azim=0)
+                self.fig.canvas.draw_idle()
+                
+                if self.logger:
+                    self.logger.info("Plane creation mode ON - switched to TOP-DOWN view")
+                    self.logger.info("Click at center, then click at right edge to create plane")
+            else:
+                self.plane_center = None
+                if self.plane_creation_artist:
+                    self.plane_creation_artist.remove()
+                    self.plane_creation_artist = None
+                
+                # Restore previous view state
+                if self.saved_view_state:
+                    self.ax.view_init(elev=self.saved_view_state["elev"], azim=self.saved_view_state["azim"])
+                    self.ax.set_xlim(self.saved_view_state["xlim"])
+                    self.ax.set_ylim(self.saved_view_state["ylim"])
+                    self.ax.set_zlim(self.saved_view_state["zlim"])
+                    self.saved_view_state = None
+                    self.fig.canvas.draw_idle()
+                
+                if self.logger:
+                    self.logger.info("Plane creation mode OFF - restored previous view")
+                self.draw_graph(preserve_view=True)
             return
 
         # manual hierarchy creation
